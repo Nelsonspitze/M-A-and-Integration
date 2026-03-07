@@ -132,7 +132,7 @@ export function AISidebar({ item, deal, workstreamId, wsStrategy, onClose, onUpd
 
   function loadTasks() {
     if (!lastAssistant) return;
-    const newTasks = parseTasksFromText(lastAssistant.content, item, workstreamId, deal.id, deal.team);
+    const newTasks = parseTasksFromText(lastAssistant.content, item, workstreamId, deal.id, deal.team ?? []);
     if (!newTasks.length) return;
 
     // Remove existing tasks for this item and replace with AI tasks
@@ -203,11 +203,11 @@ export function AISidebar({ item, deal, workstreamId, wsStrategy, onClose, onUpd
             </div>
 
             {/* Team preview */}
-            {deal.team.length > 0 && (
+            {(deal.team?.length ?? 0) > 0 && (
               <div>
                 <p className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-2">Your team</p>
                 <div className="flex flex-wrap gap-1.5">
-                  {deal.team.map(m => (
+                  {(deal.team ?? []).map(m => (
                     <div key={m.id} className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-[#F3F4F6]">
                       <div className={`w-5 h-5 rounded-full ${m.color} flex items-center justify-center`}>
                         <span className="text-[9px] font-bold text-white">{m.initials}</span>
