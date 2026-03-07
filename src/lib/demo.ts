@@ -1,4 +1,103 @@
 import { Deal, saveDeal, getDeals } from "./store";
+import { TargetCompany } from "./crm/types";
+import { getTargets } from "./crm/store";
+import { generateStageTasks, STAGE_TASKS } from "./crm/stage-tasks";
+
+const CRM_KEY = "crm_targets";
+const CRM_DEMO_MARKER = "crm-demo-nexora";
+
+export function isCRMDemoLoaded(): boolean {
+  return getTargets().some(t => t.id === CRM_DEMO_MARKER);
+}
+
+export function loadCRMDemo(): void {
+  if (isCRMDemoLoaded()) return;
+  const now = new Date().toISOString();
+  const dStr = (daysAgo: number) => { const d = new Date(); d.setDate(d.getDate()-daysAgo); return d.toISOString(); };
+  const ds   = (daysAgo: number) => dStr(daysAgo).split("T")[0];
+
+  // Helper: generate tasks with some pre-completed
+  function tasks(stage: Parameters<typeof generateStageTasks>[0], completedIds: string[] = []) {
+    return generateStageTasks(stage).map((t, i) => ({
+      ...t,
+      completed: completedIds.includes(t.workstreamId),
+      completedAt: completedIds.includes(t.workstreamId) ? dStr(Math.max(1, 5 - i)) : undefined,
+    }));
+  }
+
+  const targets: TargetCompany[] = [
+    {
+      id: "crm-demo-nexora", name: "Nexora Facility Services", stage: "qualified",
+      sector: "Business Services", country: "NL", city: "Utrecht",
+      ebitdaEst: 1200, fte: 95, revenueEst: 8500, founded: 2008,
+      geographyFit: "core", strategyFit: "bolt-on", professionalization: 3,
+      priority: "high", description: "Facility management company active in the Randstad area.",
+      contacts: [], contactLog: [],
+      crmTasks: tasks("qualified", ["commercial"]),
+      stageEnteredAt: { prospect: dStr(30), qualified: dStr(14) },
+      createdAt: dStr(30), updatedAt: dStr(14),
+    },
+    {
+      id: "crm-demo-veritas", name: "Veritas HR Consulting", stage: "nda",
+      sector: "Business Services", country: "NL", city: "Amsterdam",
+      ebitdaEst: 750, fte: 42, revenueEst: 4200,
+      geographyFit: "core", strategyFit: "partial", professionalization: 4,
+      priority: "high", description: "HR consulting firm, highly complementary to platform HR capabilities.",
+      contacts: [{ id: "c1", name: "Peter de Vries", role: "CEO", email: "peter@veritas-hr.nl" }],
+      contactLog: [
+        { id: "l1", date: ds(10), type: "meeting", summary: "Introductory meeting with Peter de Vries. Positive reception. Agreed to share teaser." },
+        { id: "l2", date: ds(5),  type: "email",   summary: "NDA sent. Awaiting signature." },
+      ],
+      crmTasks: tasks("nda", ["finance", "commercial"]),
+      stageEnteredAt: { prospect: dStr(45), qualified: dStr(30), contacted: dStr(20), nda: dStr(5) },
+      createdAt: dStr(45), updatedAt: dStr(5),
+    },
+    {
+      id: "crm-demo-techbridge", name: "TechBridge Solutions", stage: "contacted",
+      sector: "Technology", country: "BE", city: "Ghent",
+      ebitdaEst: 550, fte: 28, revenueEst: 3100,
+      geographyFit: "adjacent", strategyFit: "bolt-on", professionalization: 4,
+      priority: "medium", contacts: [], contactLog: [],
+      crmTasks: tasks("contacted"),
+      stageEnteredAt: { prospect: dStr(20), qualified: dStr(12), contacted: dStr(7) },
+      createdAt: dStr(20), updatedAt: dStr(7),
+    },
+    {
+      id: "crm-demo-alpina", name: "Alpina Industrials", stage: "prospect",
+      sector: "Industrial", country: "DE", city: "Düsseldorf",
+      ebitdaEst: 2100, fte: 180,
+      geographyFit: "stretch", strategyFit: "standalone", professionalization: 2,
+      priority: "low", contacts: [], contactLog: [],
+      crmTasks: tasks("prospect"),
+      stageEnteredAt: { prospect: dStr(7) },
+      createdAt: dStr(7), updatedAt: dStr(7),
+    },
+    {
+      id: "crm-demo-meridian", name: "Meridian Care Group", stage: "ioi",
+      sector: "Healthcare", country: "NL", city: "Rotterdam",
+      ebitdaEst: 1800, fte: 120, revenueEst: 9200, founded: 2003,
+      geographyFit: "core", strategyFit: "full", professionalization: 3,
+      priority: "high", description: "Home care provider, strong match with platform healthcare buy-and-build thesis.",
+      contacts: [
+        { id: "c2", name: "Sandra Mulder", role: "CFO", email: "s.mulder@meridiancare.nl" },
+        { id: "c3", name: "Rob Jansen",    role: "CEO" },
+      ],
+      contactLog: [
+        { id: "l3", date: ds(25), type: "meeting", summary: "First management presentation. Strong cultural fit observed." },
+        { id: "l4", date: ds(18), type: "call",    summary: "Follow-up on financials. Preliminary P&L shared informally." },
+        { id: "l5", date: ds(8),  type: "email",   summary: "IOI submitted at 5.5× EBITDA. Waiting for seller response." },
+      ],
+      // IOI tasks: finance + commercial done, IT + HR + ops + legal still pending
+      crmTasks: tasks("ioi", ["finance", "commercial"]),
+      stageEnteredAt: { prospect: dStr(60), qualified: dStr(45), contacted: dStr(35), nda: dStr(28), ioi: dStr(8) },
+      createdAt: dStr(60), updatedAt: dStr(8),
+    },
+  ];
+
+  const existing = getTargets();
+  const merged = [...existing, ...targets.filter(t => !existing.find(e => e.id === t.id))];
+  localStorage.setItem(CRM_KEY, JSON.stringify(merged));
+}
 
 export const DEMO_ID = "demo-buildco-quinnect";
 

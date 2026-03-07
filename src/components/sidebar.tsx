@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Deal, getDeals } from "@/lib/store";
-import { LayoutDashboard, Plus, Settings, Users } from "lucide-react";
+import { LayoutDashboard, Plus, Settings, Users, Target } from "lucide-react";
 
 function getDealProgress(deal: Deal) {
   if (!deal.tasks.length) return 0;
@@ -68,6 +68,7 @@ export function Sidebar() {
       <nav className="px-3 space-y-0.5">
         {[
             { href: "/",         label: "Dashboard", icon: LayoutDashboard },
+          { href: "/crm",      label: "Pipeline",  icon: Target },
           { href: "/team",     label: "Team",      icon: Users },
           { href: "/settings", label: "Settings",  icon: Settings },
         ].map(({ href, label, icon: Icon }) => (

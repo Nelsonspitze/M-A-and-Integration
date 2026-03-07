@@ -3,16 +3,23 @@
 import { useState } from "react";
 import { Sidebar } from "@/components/sidebar";
 import { getDeals, saveDeal } from "@/lib/store";
-import { loadDemo, isDemoLoaded, DEMO_ID } from "@/lib/demo";
+import { loadDemo, isDemoLoaded, DEMO_ID, loadCRMDemo, isCRMDemoLoaded } from "@/lib/demo";
 import { Trash2, RefreshCw, Database, Sparkles, Info } from "lucide-react";
 
 export default function SettingsPage() {
   const [demoLoaded, setDemoLoaded] = useState(() => isDemoLoaded());
+  const [crmDemoLoaded, setCrmDemoLoaded] = useState(() => isCRMDemoLoaded());
   const [cleared, setCleared] = useState(false);
 
   function handleLoadDemo() {
     loadDemo();
     setDemoLoaded(true);
+    setCleared(false);
+  }
+
+  function handleLoadCRMDemo() {
+    loadCRMDemo();
+    setCrmDemoLoaded(true);
     setCleared(false);
   }
 
@@ -23,9 +30,11 @@ export default function SettingsPage() {
   }
 
   function handleClearAll() {
-    if (!confirm("Clear all deal data? This cannot be undone.")) return;
+    if (!confirm("Clear all data? This cannot be undone.")) return;
     localStorage.removeItem("pmi_deals");
+    localStorage.removeItem("crm_targets");
     setDemoLoaded(false);
+    setCrmDemoLoaded(false);
     setCleared(true);
   }
 
@@ -40,16 +49,16 @@ export default function SettingsPage() {
             <h1 className="text-4xl font-light text-[#242C2D] heading-tight">Settings</h1>
           </div>
 
-          {/* Demo data */}
+          {/* Demo data — PMI */}
           <div className="bg-white border border-[#E5E7EB] rounded-xl p-6 mb-4">
             <div className="flex items-start gap-3 mb-5">
               <div className="w-9 h-9 rounded-xl bg-[#F5F0FE] flex items-center justify-center shrink-0">
                 <Database size={16} className="text-[#CDADFC]" />
               </div>
               <div>
-                <p className="font-medium text-[#242C2D] text-sm">Demo data</p>
+                <p className="font-medium text-[#242C2D] text-sm">Integration demo</p>
                 <p className="text-xs text-[#9CA3AF] mt-0.5">
-                  BuildCo × Quinnect — a realistic 52-day post-close integration with tasks, team, and AI plans pre-loaded.
+                  BuildCo × Quinnect — a realistic 52-day post-close integration with tasks, team, and AI plans.
                 </p>
               </div>
             </div>
@@ -60,13 +69,38 @@ export default function SettingsPage() {
                 </span>
                 <button onClick={handleRemoveDemo}
                   className="text-xs text-[#9CA3AF] hover:text-[#FF6400] transition-colors underline underline-offset-2">
-                  Remove demo
+                  Remove
                 </button>
               </div>
             ) : (
               <button onClick={handleLoadDemo}
                 className="flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-lg border border-[#E5E7EB] text-[#374151] hover:border-[#CDADFC]/60 hover:bg-[#F5F0FE] hover:text-[#7C3AED] transition-all">
-                <RefreshCw size={12} /> Load demo data
+                <RefreshCw size={12} /> Load demo
+              </button>
+            )}
+          </div>
+
+          {/* Demo data — CRM */}
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-6 mb-4">
+            <div className="flex items-start gap-3 mb-5">
+              <div className="w-9 h-9 rounded-xl bg-[#FFF7ED] flex items-center justify-center shrink-0">
+                <Database size={16} className="text-[#FF6400]" />
+              </div>
+              <div>
+                <p className="font-medium text-[#242C2D] text-sm">Pipeline demo</p>
+                <p className="text-xs text-[#9CA3AF] mt-0.5">
+                  5 acquisition targets across different stages — Prospect through IOI — with contacts and interaction logs.
+                </p>
+              </div>
+            </div>
+            {crmDemoLoaded ? (
+              <span className="flex items-center gap-1.5 text-xs text-[#9AC183] font-medium">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#9AC183]" /> Demo loaded
+              </span>
+            ) : (
+              <button onClick={handleLoadCRMDemo}
+                className="flex items-center gap-2 text-xs font-medium px-4 py-2 rounded-lg border border-[#E5E7EB] text-[#374151] hover:border-[#FF6400]/40 hover:bg-[#FFF7ED] hover:text-[#FF6400] transition-all">
+                <RefreshCw size={12} /> Load pipeline demo
               </button>
             )}
           </div>
