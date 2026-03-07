@@ -1,8 +1,8 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { X, Send, Sparkles, Trash2 } from "lucide-react";
-import { CRMTask, CRMTaskNote, TargetCompany } from "@/lib/crm/types";
+import { X, Send, Sparkles, Trash2, Paperclip, Check } from "lucide-react";
+import { CRMTask, CRMTaskNote, DocRequest, DocRequestStatus, TargetCompany } from "@/lib/crm/types";
 import { CRM_DEPTS } from "@/lib/crm/stage-tasks";
 import { MarkdownMessage } from "./markdown-message";
 
@@ -118,7 +118,37 @@ export function CRMTaskPanel({ task, company, isAdmin, initialTab = "work", onCl
     }
   }
 
-  const notes = task.notes ?? [];
+  const notes       = task.notes ?? [];
+  const docRequests = task.docRequests ?? [];
+
+  // Document request form state
+  const [reqContact, setReqContact] = useState("");
+  const [reqDesc, setReqDesc]       = useState("");
+  const [showReqForm, setShowReqForm] = useState(false);
+
+  function addDocRequest() {
+    if (!reqContact || !reqDesc.trim()) return;
+    const contact = company.contacts.find(c => c.id === reqContact);
+    if (!contact) return;
+    const req: DocRequest = {
+      id: crypto.randomUUID(),
+      contactId: contact.id,
+      contactName: contact.name,
+      description: reqDesc.trim(),
+      status: "pending",
+      requestedAt: new Date().toISOString(),
+    };
+    onSave(buildUpdated({ docRequests: [...docRequests, req] }));
+    setReqContact(""); setReqDesc(""); setShowReqForm(false);
+  }
+
+  function updateReqStatus(id: string, status: DocRequestStatus) {
+    const updated = docRequests.map(r => r.id === id
+      ? { ...r, status, receivedAt: status === "received" ? new Date().toISOString() : r.receivedAt }
+      : r
+    );
+    onSave(buildUpdated({ docRequests: updated }));
+  }
 
   return (
     <div className="w-[400px] shrink-0 h-full flex flex-col bg-white border-l border-[#E5E7EB]">
@@ -201,6 +231,79 @@ export function CRMTaskPanel({ task, company, isAdmin, initialTab = "work", onCl
               />
             </div>
           </div>
+
+          {/* Document requests */}
+          {company.contacts.length > 0 && (
+            <div className="px-5 py-4 border-b border-[#F3F4F6]">
+              <div className="flex items-center justify-between mb-3">
+                <p className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF]">
+                  Document requests
+                  {docRequests.length > 0 && (
+                    <span className="ml-1.5 bg-[#F3F4F6] text-[#6B7280] px-1.5 py-0.5 rounded-full text-[9px]">
+                      {docRequests.length}
+                    </span>
+                  )}
+                </p>
+                <button onClick={() => setShowReqForm(v => !v)}
+                  className="flex items-center gap-1 text-[10px] text-[#9CA3AF] hover:text-[#FF6400] transition-colors">
+                  <Paperclip size={10} /> Request from target
+                </button>
+              </div>
+
+              {docRequests.length > 0 && (
+                <div className="space-y-2 mb-3">
+                  {docRequests.map(r => (
+                    <div key={r.id} className={`rounded-lg px-3 py-2 border text-[11px] flex items-start gap-2 ${
+                      r.status === "received" ? "bg-[#F0FDF4] border-[#9AC183]/30" : "bg-[#FAFAFA] border-[#E5E7EB]"
+                    }`}>
+                      <Paperclip size={11} className={r.status === "received" ? "text-[#9AC183] shrink-0 mt-0.5" : "text-[#9CA3AF] shrink-0 mt-0.5"} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[#374151] font-medium truncate">{r.description}</p>
+                        <p className="text-[#9CA3AF] mt-0.5">→ {r.contactName}</p>
+                      </div>
+                      {r.status === "pending" ? (
+                        <button onClick={() => updateReqStatus(r.id, "received")}
+                          className="shrink-0 text-[#9CA3AF] hover:text-[#9AC183] transition-colors" title="Mark as received">
+                          <Check size={12} />
+                        </button>
+                      ) : (
+                        <span className="text-[9px] font-mono text-[#9AC183] shrink-0">received</span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {showReqForm && (
+                <div className="space-y-2 bg-[#FAFAFA] border border-[#E5E7EB] rounded-xl p-3">
+                  <div>
+                    <p className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-1">Request from</p>
+                    <select value={reqContact} onChange={e => setReqContact(e.target.value)}
+                      className="w-full text-xs text-[#374151] border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 bg-white focus:outline-none focus:border-[#FF6400]/40">
+                      <option value="">Select contact…</option>
+                      {company.contacts.map(c => (
+                        <option key={c.id} value={c.id}>{c.name} — {c.role}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-1">What do you need?</p>
+                    <textarea value={reqDesc} onChange={e => setReqDesc(e.target.value)}
+                      rows={2} placeholder="e.g. Last 3 years P&L statements, audited"
+                      className="w-full text-xs text-[#374151] border border-[#E5E7EB] rounded-xl px-2.5 py-2 resize-none focus:outline-none focus:border-[#FF6400]/40 placeholder:text-[#D1D5DB]" />
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={addDocRequest} disabled={!reqContact || !reqDesc.trim()}
+                      className="sf-gradient text-white text-xs font-medium px-3 py-1.5 rounded-lg hover:opacity-90 disabled:opacity-40">
+                      Add request
+                    </button>
+                    <button onClick={() => { setShowReqForm(false); setReqContact(""); setReqDesc(""); }}
+                      className="text-xs text-[#9CA3AF] hover:text-[#374151] px-3 py-1.5">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Findings log */}
           <div className="px-5 py-4">

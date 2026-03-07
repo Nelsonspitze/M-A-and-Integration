@@ -41,6 +41,8 @@ export interface Deal {
   team: TeamMember[];
   actionPlans: Record<string, string>; // itemId -> AI generated plan
   createdAt: string;
+  planStatus?: "planning" | "active"; // "planning" = M&A wizard in progress
+  crmTargetId?: string;               // source CRM target, if converted
 }
 
 const STORAGE_KEY = "pmi_deals";
@@ -70,6 +72,7 @@ export function createDeal(data: Omit<Deal, "id" | "createdAt" | "tasks" | "acti
     id: crypto.randomUUID(),
     createdAt: new Date().toISOString(),
     tasks: [], actionPlans: {}, workstreamConfigs: [], team: [],
+    planStatus: "planning",
   };
   saveDeal(deal);
   return deal;

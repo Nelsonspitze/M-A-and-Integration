@@ -33,7 +33,7 @@ export default function NewDealPage() {
       addOnCompany: form.addOnCompany, closeDate: form.closeDate,
       overallStrategy: form.overallStrategy, dealBrief: form.dealBrief,
     });
-    router.push(`/deals/${deal.id}`);
+    router.push(`/deals/${deal.id}/plan`);
   }
 
   return (

@@ -2,14 +2,23 @@
 
 import { useState } from "react";
 import { Sidebar } from "@/components/sidebar";
-import { getDeals, saveDeal } from "@/lib/store";
+import { getDeals } from "@/lib/store";
 import { loadDemo, isDemoLoaded, DEMO_ID, loadCRMDemo, isCRMDemoLoaded } from "@/lib/demo";
-import { Trash2, RefreshCw, Database, Sparkles, Info } from "lucide-react";
+import { getUser, setUser, DEMO_USERS, ROLE_LABELS, ROLE_DESCRIPTIONS } from "@/lib/auth";
+import { Trash2, RefreshCw, Database, Sparkles, Info, Users } from "lucide-react";
 
 export default function SettingsPage() {
-  const [demoLoaded, setDemoLoaded] = useState(() => isDemoLoaded());
+  const [demoLoaded, setDemoLoaded]       = useState(() => isDemoLoaded());
   const [crmDemoLoaded, setCrmDemoLoaded] = useState(() => isCRMDemoLoaded());
-  const [cleared, setCleared] = useState(false);
+  const [cleared, setCleared]             = useState(false);
+  const [currentUser, setCurrentUser]     = useState(() => getUser());
+
+  function switchUser(userId: string) {
+    const u = DEMO_USERS.find(x => x.id === userId);
+    if (!u) return;
+    setUser(u);
+    setCurrentUser(u);
+  }
 
   function handleLoadDemo() {
     loadDemo();
@@ -47,6 +56,48 @@ export default function SettingsPage() {
           <div className="mb-10">
             <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-3">Settings</p>
             <h1 className="text-4xl font-light text-[#242C2D] heading-tight">Settings</h1>
+          </div>
+
+          {/* Role switcher */}
+          <div className="bg-white border border-[#E5E7EB] rounded-xl p-6 mb-4">
+            <div className="flex items-start gap-3 mb-5">
+              <div className="w-9 h-9 rounded-xl bg-[#EEF2FE] flex items-center justify-center shrink-0">
+                <Users size={16} className="text-[#74A0F4]" />
+              </div>
+              <div>
+                <p className="font-medium text-[#242C2D] text-sm">Current user</p>
+                <p className="text-xs text-[#9CA3AF] mt-0.5">Switch between user roles to see what each role can access.</p>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {DEMO_USERS.map(u => (
+                <button key={u.id} onClick={() => switchUser(u.id)}
+                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-xl border transition-all text-left ${
+                    currentUser.id === u.id
+                      ? "border-[#FF6400]/40 bg-[#FFF7ED]"
+                      : "border-[#E5E7EB] hover:border-[#D1D5DB] hover:bg-[#FAFAFA]"
+                  }`}>
+                  <div className="w-8 h-8 rounded-full bg-[#242C2D] flex items-center justify-center shrink-0">
+                    <span className="text-[11px] font-medium text-white">{u.name.split(" ").map(n => n[0]).join("").slice(0,2)}</span>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <p className="text-sm font-medium text-[#242C2D]">{u.name}</p>
+                      <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${
+                        u.role === "ma-admin"    ? "bg-[#242C2D] text-white" :
+                        u.role === "c-level"     ? "bg-[#FFEFE5] text-[#FF6400]" :
+                        u.role === "dept-lead"   ? "bg-[#EEF2FE] text-[#74A0F4]" :
+                        "bg-[#F3F4F6] text-[#6B7280]"
+                      }`}>{ROLE_LABELS[u.role]}</span>
+                    </div>
+                    <p className="text-[11px] text-[#9CA3AF] mt-0.5 truncate">{ROLE_DESCRIPTIONS[u.role]}</p>
+                  </div>
+                  {currentUser.id === u.id && (
+                    <span className="text-[10px] font-mono text-[#FF6400] shrink-0">active</span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Demo data — PMI */}

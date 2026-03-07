@@ -50,6 +50,19 @@ export interface CRMTaskNote {
   createdAt: string;
 }
 
+export type DocRequestStatus = "pending" | "received" | "cancelled";
+
+export interface DocRequest {
+  id: string;
+  contactId: string;     // ContactPerson.id
+  contactName: string;   // denormalised for display
+  description: string;   // what you're asking for
+  status: DocRequestStatus;
+  docId?: string;        // CRMDocument.id once received
+  requestedAt: string;
+  receivedAt?: string;
+}
+
 export interface CRMTask {
   id: string;
   stage: CRMStage;
@@ -62,6 +75,7 @@ export interface CRMTask {
   assignee?: string;
   dueDate?: string;
   notes?: CRMTaskNote[];
+  docRequests?: DocRequest[];
   isCustom?: boolean;
 }
 

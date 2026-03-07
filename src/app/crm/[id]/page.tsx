@@ -8,7 +8,8 @@ import { TargetCompany, ContactPerson, ContactEntry, CRMTask, CRMDocument, DocTy
 import { getTarget, saveTarget, deleteTarget, advanceStage, nextStage, STAGES, stageIndex, daysInStage, qualificationScore } from "@/lib/crm/store";
 import { CRM_DEPTS, saveCustomTemplate } from "@/lib/crm/stage-tasks";
 import { CRMTaskPanel } from "@/components/crm-task-panel";
-import { IntegrationStrategy } from "@/lib/pmi/library";
+import { IntegrationStrategy, INTEGRATION_STRATEGIES } from "@/lib/pmi/library";
+import { createDeal } from "@/lib/store";
 import {
   ChevronLeft, Trash2, Plus, X, ExternalLink, Upload,
   Phone, Mail, Users, FileText, Check, CheckCircle2, Circle, AlertTriangle, Lock, Sparkles, UploadCloud, ShieldCheck,
@@ -218,6 +219,24 @@ export default function CRMDetailPage() {
     setDirty(false);
   }
 
+  function handleConvertToIntegration() {
+    if (!t) return;
+    if (!confirm(`Convert ${t.name} to an active integration? This will create a new deal in the planning wizard.`)) return;
+    const strategyValue = (t.strategyFit as IntegrationStrategy) ?? "partial";
+    const validStrategies = INTEGRATION_STRATEGIES.map(s => s.value);
+    const overallStrategy = validStrategies.includes(strategyValue) ? strategyValue : "partial";
+    const deal = createDeal({
+      name: `${t.name} Integration`,
+      platformCompany: "Platform Company",
+      addOnCompany: t.name,
+      closeDate: new Date().toISOString().split("T")[0],
+      overallStrategy,
+      dealBrief: t.description ?? "",
+      crmTargetId: t.id,
+    });
+    router.push(`/deals/${deal.id}/plan`);
+  }
+
   function handleDelete() {
     if (!t || !confirm(`Delete ${t.name}? This cannot be undone.`)) return;
     deleteTarget(t.id);
@@ -398,6 +417,12 @@ export default function CRMDetailPage() {
                       : "bg-[#F3F4F6] text-[#9CA3AF] hover:bg-[#E5E7EB]"
                   }`}>
                   → {nextMeta.label}
+                </button>
+              )}
+              {t.stage === "closed" && (
+                <button onClick={handleConvertToIntegration}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg sf-gradient text-white hover:opacity-90 transition-opacity">
+                  → Start Integration
                 </button>
               )}
               <button onClick={handleDelete} className="p-2 text-[#D1D5DB] hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">

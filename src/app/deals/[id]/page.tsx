@@ -6,8 +6,10 @@ import { Deal, getDeal, saveDeal, TeamMember } from "@/lib/store";
 import { scoreForDeal, medal } from "@/lib/scoring";
 import { INTEGRATION_STRATEGIES, IntegrationStrategy, PMI_LIBRARY } from "@/lib/pmi/library";
 import { Sidebar } from "@/components/sidebar";
-import { ArrowRight, Sparkles, AlertTriangle, Plus, X } from "lucide-react";
+import { ArrowRight, Sparkles, AlertTriangle, Plus, X, MapPin } from "lucide-react";
 import Link from "next/link";
+import { getUser, canSeePlanning, canSeeScoreboard, canSeeAllWorkstreams, canSeeWorkstream } from "@/lib/auth";
+import { getPlan } from "@/lib/pmi/plan";
 
 const wsColors: Record<string, { dot: string; light: string }> = {
   day1:       { dot: "#FF6400", light: "#FFEFE5" },
@@ -73,10 +75,18 @@ export default function DealPage() {
 
   if (!deal || !score) return null;
 
+  const user              = getUser();
+  const plan              = getPlan(deal.id);
+  const isPlanning        = deal.planStatus === "planning";
+  const showScoreboard    = canSeeScoreboard(user);
+  const showAllWorkstreams = canSeeAllWorkstreams(user);
+
   const progress = getDealProgress(deal);
   const days = Math.max(0, Math.floor((Date.now() - new Date(deal.closeDate).getTime()) / 86400000));
   const strategy = INTEGRATION_STRATEGIES.find(s => s.value === deal.overallStrategy);
-  const activeWorkstreams = PMI_LIBRARY.filter(ws => strategy?.activeWorkstreams.includes(ws.id));
+  const allActiveWorkstreams = PMI_LIBRARY.filter(ws => strategy?.activeWorkstreams.includes(ws.id));
+  // Role-filtered workstreams
+  const activeWorkstreams = allActiveWorkstreams.filter(ws => canSeeWorkstream(user, ws.id));
   const atRisk = activeWorkstreams.filter(ws => {
     const p = getWsProgress(deal, ws.id);
     return p !== null && p < 40;
@@ -109,8 +119,37 @@ export default function DealPage() {
       <main className="flex-1 overflow-y-auto">
         <div className="max-w-4xl mx-auto px-8 pt-12 pb-20">
 
+          {/* Planning banner — M&A/C-level only */}
+          {isPlanning && canSeePlanning(user) && (
+            <div className="bg-[#FFF7ED] border border-[#FF6400]/30 rounded-xl p-4 mb-6 flex items-center gap-3">
+              <MapPin size={16} className="text-[#FF6400] shrink-0" />
+              <div className="flex-1">
+                <p className="text-sm font-medium text-[#242C2D]">Integration plan in progress</p>
+                <p className="text-xs text-[#6B7280] mt-0.5">Complete the planning wizard before departments can see their workstreams.</p>
+              </div>
+              <Link href={`/deals/${deal.id}/plan`}>
+                <button className="sf-gradient text-white text-xs font-medium px-4 py-2 rounded-lg hover:opacity-90 flex items-center gap-1.5 shrink-0">
+                  Open wizard <ArrowRight size={11} />
+                </button>
+              </Link>
+            </div>
+          )}
+
+          {/* Dept/team-member: planning in progress placeholder */}
+          {isPlanning && !canSeePlanning(user) && (
+            <div className="bg-white border border-[#E5E7EB] rounded-2xl p-16 text-center">
+              <div className="w-12 h-12 rounded-2xl bg-[#F3F4F6] flex items-center justify-center mx-auto mb-4">
+                <MapPin size={20} className="text-[#9CA3AF]" />
+              </div>
+              <h2 className="text-lg font-light text-[#242C2D] mb-2">Plan in preparation</h2>
+              <p className="text-sm text-[#6B7280] max-w-sm mx-auto">
+                The M&A team is finalising the integration plan for {deal.addOnCompany}. You&apos;ll be notified when your workstream is ready.
+              </p>
+            </div>
+          )}
+
           {/* Deal header */}
-          <div className="mb-8">
+          {(!isPlanning || canSeePlanning(user)) && <div className="mb-8">
             <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-3">Integration</p>
             <h1 className="text-4xl font-light text-[#242C2D] heading-tight mb-1">{deal.name}</h1>
             <div className="flex items-center gap-3 mt-2">
@@ -120,7 +159,7 @@ export default function DealPage() {
               <span className="text-[#E5E7EB]">·</span>
               <span className="text-[10px] font-mono text-[#9CA3AF]">Day {days} post-close</span>
             </div>
-          </div>
+          </div>}
 
           {/* Progress card */}
           <div className="bg-[#242C2D] rounded-2xl p-6 mb-8">
@@ -243,8 +282,8 @@ export default function DealPage() {
               })}
             </div>
           </div>
-          {/* Scoreboard */}
-          <div className="mt-10">
+          {/* Scoreboard — M&A and C-level only */}
+          {showScoreboard && <div className="mt-10">
             <div className="flex items-center justify-between mb-4">
               <h2 className="font-medium text-[#242C2D]">Scoreboard</h2>
               <div className="flex items-center gap-3">
@@ -364,7 +403,7 @@ export default function DealPage() {
                 )}
               </div>
             )}
-          </div>
+          </div>}
 
           {/* Team */}
           <div className="mt-10">
@@ -449,3 +488,4 @@ export default function DealPage() {
     </div>
   );
 }
+

@@ -11,7 +11,8 @@ import {
   STAGES, stageIndex, daysInStage, qualificationScore,
 } from "@/lib/crm/store";
 import { IntegrationStrategy } from "@/lib/pmi/library";
-import { Plus, X, Target, ChevronRight, Flag } from "lucide-react";
+import { Plus, X, Target, ChevronRight, Flag, Lock } from "lucide-react";
+import { getUser, canSeeCRM } from "@/lib/auth";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 
@@ -259,6 +260,7 @@ function Column({ stage, companies }: { stage: typeof STAGES[0]; companies: Targ
 export default function CRMPage() {
   const [targets, setTargets] = useState<TargetCompany[]>([]);
   const [showNew, setShowNew] = useState(false);
+  const user = getUser();
 
   function load() { setTargets(getTargets()); }
   useEffect(() => {
@@ -266,6 +268,23 @@ export default function CRMPage() {
     window.addEventListener("crm-update", load);
     return () => window.removeEventListener("crm-update", load);
   }, []);
+
+  if (!canSeeCRM(user)) {
+    return (
+      <div className="flex h-screen bg-[#FAFAFA]">
+        <Sidebar />
+        <main className="flex-1 flex items-center justify-center">
+          <div className="text-center">
+            <div className="w-14 h-14 rounded-2xl bg-[#F3F4F6] flex items-center justify-center mx-auto mb-4">
+              <Lock size={22} className="text-[#D1D5DB]" />
+            </div>
+            <p className="text-sm font-medium text-[#374151]">Pipeline access restricted</p>
+            <p className="text-xs text-[#9CA3AF] mt-1">The M&A pipeline is only visible to M&A Admins.</p>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   const byStage = (id: string) => targets.filter(t => t.stage === id);
   const totalScore = targets.length > 0

@@ -5,7 +5,92 @@ import { INTEGRATION_STRATEGIES } from "@/lib/pmi/library";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
-  const { messages, item, deal, wsStrategy, task, crmContext } = await req.json();
+  const { messages, item, deal, wsStrategy, task, crmContext, planContext } = await req.json();
+
+  // ── Integration Planning mode ───────────────────────────────────────────────
+  if (planContext) {
+    const { step, deal: d, plan } = planContext;
+    const systemMap: Record<string, string> = {
+      rationale: `You are an expert M&A strategist helping a private equity firm articulate the strategic rationale for an acquisition.
+
+Deal: ${d.platformCompany} acquires ${d.addOnCompany}
+Strategy: ${d.overallStrategy}
+Brief: ${d.dealBrief || "Not provided"}
+
+Write a concise, compelling acquisition rationale (3-4 paragraphs) covering: strategic fit, why now, what capabilities are gained, and what the combined entity achieves. Be specific, avoid generic language. Use business language appropriate for a C-suite and board audience.`,
+
+      synergies: `You are an M&A integration expert. Generate a concrete synergy map for this acquisition.
+
+Deal: ${d.platformCompany} acquires ${d.addOnCompany}
+Strategy: ${d.overallStrategy}
+Brief: ${d.dealBrief || "Not provided"}
+Rationale: ${plan?.dealRationale || "Not yet written"}
+
+List 6-8 specific, realistic synergies. For each, write:
+**[Category: Revenue/Cost/Capability/Market]** — Title
+Description (1-2 sentences, specific and quantified where possible)
+Estimated value: €Xk | Timeline: Month X
+
+Be realistic and deal-specific. No generic synergies.`,
+
+      workstreams: `You are a PMI specialist. Recommend integration approach for each workstream.
+
+Deal: ${d.platformCompany} acquires ${d.addOnCompany}
+Strategy: ${d.overallStrategy}
+Brief: ${d.dealBrief || "Not provided"}
+Synergies identified: ${plan?.synergyMap?.map((s: { title: string }) => s.title).join(", ") || "none yet"}
+
+For each active workstream (Day 1, HR, Finance, IT, Commercial, Operations, Legal, Culture), recommend:
+- Integration strategy: Full Integration / Partial Integration / Bolt-on / Standalone
+- One-paragraph rationale explaining why
+- 1-2 key risks
+
+Format: **[Workstream]** — [Strategy]
+Rationale: ...
+Key risks: ...`,
+
+      timeline: `You are a PMI project manager. Draft a milestone timeline for this integration.
+
+Deal: ${d.platformCompany} acquires ${d.addOnCompany}
+Strategy: ${d.overallStrategy}
+Brief: ${d.dealBrief || "Not provided"}
+Workstream decisions: ${plan?.workstreamDecisions?.map((w: { workstreamId: string; strategy: string }) => `${w.workstreamId}: ${w.strategy}`).join(", ") || "not set"}
+
+Draft 4-5 key milestones for each phase:
+**Day 1** — First day priorities
+**Month 1 (Days 2–30)** — Stabilisation
+**Month 3 (Days 31–90)** — Integration in motion
+**Month 6 (Days 91–180)** — Deep integration
+**Month 12 (Days 181–365)** — Full value realisation
+
+Be specific to this deal. Each milestone should be an action, not a vague goal.`,
+    };
+
+    const system = systemMap[step] ?? systemMap.rationale;
+
+    if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === "your_api_key_here") {
+      return new Response("ANTHROPIC_API_KEY is not configured.", { status: 500 });
+    }
+    try {
+      const stream = client.messages.stream({ model: "claude-sonnet-4-6", max_tokens: 2000, system, messages });
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const event of stream) {
+              if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                controller.enqueue(new TextEncoder().encode(event.delta.text));
+              }
+            }
+          } catch (err) {
+            controller.enqueue(new TextEncoder().encode(`\n\n[Error: ${err instanceof Error ? err.message : "Unknown error"}]`));
+          } finally { controller.close(); }
+        },
+      });
+      return new Response(readable, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    } catch (err) {
+      return new Response(err instanceof Error ? err.message : "Unknown error", { status: 500 });
+    }
+  }
 
   // ── CRM Task mode ──────────────────────────────────────────────────────────
   if (crmContext) {
