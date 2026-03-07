@@ -3,162 +3,166 @@
 import { useEffect, useState } from "react";
 import { Deal, getDeals } from "@/lib/store";
 import Link from "next/link";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Progress } from "@/components/ui/progress";
 import { INTEGRATION_STRATEGIES } from "@/lib/pmi/library";
-import { Plus, Building2, Calendar, TrendingUp, Target } from "lucide-react";
+import { Sidebar } from "@/components/sidebar";
+import { loadDemo, isDemoLoaded } from "@/lib/demo";
+import { ArrowRight, Calendar, Zap } from "lucide-react";
 
-function getDealProgress(deal: Deal) {
+function getProgress(deal: Deal) {
   if (!deal.tasks.length) return 0;
-  const done = deal.tasks.filter((t) => t.completed).length;
-  return Math.round((done / deal.tasks.length) * 100);
+  return Math.round((deal.tasks.filter(t => t.completed).length / deal.tasks.length) * 100);
 }
 
-function getDaysSinceClose(closeDate: string) {
-  const diff = Date.now() - new Date(closeDate).getTime();
-  return Math.max(0, Math.floor(diff / (1000 * 60 * 60 * 24)));
+function getDays(closeDate: string) {
+  return Math.max(0, Math.floor((Date.now() - new Date(closeDate).getTime()) / 86400000));
 }
 
-const strategyColors: Record<string, string> = {
-  full: "bg-blue-100 text-blue-800",
-  partial: "bg-purple-100 text-purple-800",
-  "bolt-on": "bg-orange-100 text-orange-800",
-  standalone: "bg-slate-100 text-slate-700",
+function health(progress: number) {
+  if (progress === 0)  return { label: "Starting",  dot: "bg-[#9CA3AF]",   text: "text-[#6B7280]",   bg: "bg-[#F3F4F6]" };
+  if (progress >= 70)  return { label: "On track",  dot: "bg-[#9AC183]",   text: "text-[#374151]",   bg: "bg-[#9AC183]/20" };
+  if (progress >= 40)  return { label: "At risk",   dot: "bg-[#FCDCA0]",   text: "text-[#374151]",   bg: "bg-[#FCDCA0]/60" };
+  return                      { label: "Critical",  dot: "bg-[#FF6400]",   text: "text-[#FF6400]",   bg: "bg-[#FFEFE5]" };
+}
+
+const strategyTag: Record<string, string> = {
+  full: "bg-[#FFEFE5] text-[#FF6400]",
+  partial: "bg-[#74A0F4]/20 text-[#374151]",
+  "bolt-on": "bg-[#FCDCA0] text-[#374151]",
+  standalone: "bg-[#C7CFDC]/40 text-[#374151]",
 };
+
+const wsColors = ["#FF6400","#74A0F4","#9AC183","#CDADFC","#FCDCA0","#D6FCAD","#C7CFDC","#FFF03C"];
 
 export default function Home() {
   const [deals, setDeals] = useState<Deal[]>([]);
+  useEffect(() => { setDeals(getDeals()); }, []);
 
-  useEffect(() => {
+  function handleLoadDemo() {
+    loadDemo();
     setDeals(getDeals());
-  }, []);
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="bg-white border-b border-gray-200 px-6 py-4">
-        <div className="max-w-6xl mx-auto flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">IntegrationOS</h1>
-            <p className="text-sm text-gray-500">Post-Merger Integration Platform</p>
-          </div>
-          <Link href="/deals/new">
-            <Button className="gap-2">
-              <Plus size={16} />
-              New Integration
-            </Button>
-          </Link>
-        </div>
-      </header>
+    <div className="flex h-screen bg-[#FAFAFA]">
+      <Sidebar />
+      <main className="flex-1 overflow-y-auto">
+        <div className="max-w-3xl mx-auto px-8 pt-12 pb-20">
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
-        {deals.length > 0 && (
-          <div className="grid grid-cols-3 gap-4 mb-8">
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-blue-100 rounded-lg">
-                    <Target size={20} className="text-blue-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">{deals.length}</p>
-                    <p className="text-sm text-gray-500">Active Integrations</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-green-100 rounded-lg">
-                    <TrendingUp size={20} className="text-green-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {deals.length > 0
-                        ? Math.round(deals.reduce((acc, d) => acc + getDealProgress(d), 0) / deals.length)
-                        : 0}%
-                    </p>
-                    <p className="text-sm text-gray-500">Avg. Progress</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-            <Card>
-              <CardContent className="pt-6">
-                <div className="flex items-center gap-3">
-                  <div className="p-2 bg-purple-100 rounded-lg">
-                    <Building2 size={20} className="text-purple-600" />
-                  </div>
-                  <div>
-                    <p className="text-2xl font-bold">
-                      {deals.reduce((acc, d) => acc + d.tasks.filter((t) => t.completed).length, 0)}
-                    </p>
-                    <p className="text-sm text-gray-500">Tasks Completed</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+          {/* Header */}
+          <div className="mb-10">
+            <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-3">Dashboard</p>
+            <h1 className="text-4xl font-light text-[#242C2D] heading-tight mb-2">Your integrations</h1>
+            <p className="text-sm text-[#6B7280]">
+              {deals.length === 0
+                ? "No active integrations yet."
+                : `${deals.length} integration${deals.length > 1 ? "s" : ""} in progress.`}
+            </p>
           </div>
-        )}
 
-        {deals.length === 0 ? (
-          <div className="text-center py-24">
-            <div className="text-6xl mb-4">🤝</div>
-            <h2 className="text-xl font-semibold text-gray-800 mb-2">No integrations yet</h2>
-            <p className="text-gray-500 mb-6">Start by creating your first post-merger integration project.</p>
-            <Link href="/deals/new">
-              <Button size="lg" className="gap-2">
-                <Plus size={18} />
-                New Integration
-              </Button>
-            </Link>
-          </div>
-        ) : (
-          <div className="grid gap-4">
-            {deals.map((deal) => {
-              const progress = getDealProgress(deal);
-              const days = getDaysSinceClose(deal.closeDate);
-              const strategy = INTEGRATION_STRATEGIES.find((s) => s.value === deal.overallStrategy);
-              return (
-                <Link key={deal.id} href={`/deals/${deal.id}`}>
-                  <Card className="hover:shadow-md transition-shadow cursor-pointer">
-                    <CardHeader className="pb-3">
-                      <div className="flex items-start justify-between">
+          {/* Summary row — only when deals exist */}
+          {deals.length > 0 && (
+            <div className="grid grid-cols-3 gap-4 mb-10">
+              {[
+                { label: "Active deals",  value: deals.length,
+                  sub: "integrations running" },
+                { label: "Avg. progress", value: `${Math.round(deals.reduce((a,d) => a + getProgress(d), 0) / deals.length)}%`,
+                  sub: "across all deals" },
+                { label: "Tasks done",    value: deals.reduce((a,d) => a + d.tasks.filter(t => t.completed).length, 0),
+                  sub: `of ${deals.reduce((a,d) => a + d.tasks.length, 0)} total` },
+              ].map(s => (
+                <div key={s.label} className="bg-white border border-[#E5E7EB] rounded-xl p-5">
+                  <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-3">{s.label}</p>
+                  <p className="text-3xl font-light text-[#242C2D] heading-tight">{s.value}</p>
+                  <p className="text-xs text-[#9CA3AF] mt-1">{s.sub}</p>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Empty state */}
+          {deals.length === 0 ? (
+            <div className="bg-white border border-[#E5E7EB] rounded-2xl p-16 text-center">
+              <div className="w-14 h-14 sf-gradient rounded-2xl flex items-center justify-center mx-auto mb-5">
+                <Zap size={24} className="text-white" />
+              </div>
+              <h2 className="text-xl font-light text-[#242C2D] heading-tight mb-2">Start your first integration</h2>
+              <p className="text-sm text-[#6B7280] mb-8 max-w-sm mx-auto">
+                Create a deal, set your integration strategy, and let AI help you build a tailored PMI action plan.
+              </p>
+              <Link href="/deals/new">
+                <button className="sf-gradient text-white text-sm font-medium py-3 px-6 rounded-xl hover:opacity-90 transition-opacity inline-flex items-center gap-2">
+                  New Integration <ArrowRight size={15} />
+                </button>
+              </Link>
+              {!isDemoLoaded() && (
+                <button onClick={handleLoadDemo}
+                  className="mt-4 text-sm text-[#9CA3AF] hover:text-[#FF6400] transition-colors underline-offset-2 underline block mx-auto">
+                  or load demo: BuildCo × Quinnect
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {deals.map(deal => {
+                const progress = getProgress(deal);
+                const days = getDays(deal.closeDate);
+                const h = health(progress);
+                const strategy = INTEGRATION_STRATEGIES.find(s => s.value === deal.overallStrategy);
+
+                return (
+                  <Link key={deal.id} href={`/deals/${deal.id}`}>
+                    <div className="bg-white border border-[#E5E7EB] rounded-xl p-5 hover:border-[#FF6400]/30 hover:shadow-sm transition-all cursor-pointer group">
+                      <div className="flex items-start justify-between mb-4">
                         <div>
-                          <CardTitle className="text-lg">{deal.name}</CardTitle>
-                          <p className="text-sm text-gray-500 mt-0.5">
-                            {deal.platformCompany} acquires {deal.addOnCompany}
-                          </p>
+                          <div className="flex items-center gap-2 mb-1">
+                            <span className={`text-[10px] font-mono px-2 py-0.5 rounded-full ${strategyTag[deal.overallStrategy]}`}>
+                              {strategy?.label}
+                            </span>
+                            <span className={`flex items-center gap-1 text-[10px] font-mono px-2 py-0.5 rounded-full ${h.bg} ${h.text}`}>
+                              <span className={`w-1.5 h-1.5 rounded-full ${h.dot}`} />{h.label}
+                            </span>
+                            <span className="text-[10px] font-mono text-[#9CA3AF] flex items-center gap-1">
+                              <Calendar size={10} /> Day {days}
+                            </span>
+                          </div>
+                          <h3 className="font-medium text-[#242C2D]">{deal.name}</h3>
+                          <p className="text-xs text-[#9CA3AF] mt-0.5">{deal.platformCompany} × {deal.addOnCompany}</p>
                         </div>
-                        <div className="flex gap-2">
-                          <Badge className={strategyColors[deal.overallStrategy] + " border-0"} variant="outline">
-                            {strategy?.label}
-                          </Badge>
-                          <Badge variant="outline" className="gap-1">
-                            <Calendar size={12} />
-                            Day {days}
-                          </Badge>
+                        <div className="text-right">
+                          <p className="text-3xl font-light text-[#242C2D] heading-tight">{progress}%</p>
+                          <p className="text-[10px] font-mono text-[#9CA3AF]">complete</p>
                         </div>
                       </div>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center gap-4">
-                        <Progress value={progress} className="flex-1 h-2" />
-                        <span className="text-sm font-semibold text-gray-700 w-10 text-right">{progress}%</span>
+
+                      {/* Per-workstream mini bars */}
+                      <div className="flex gap-1 mb-3">
+                        {(strategy?.activeWorkstreams ?? []).map((ws, i) => {
+                          const wsTasks = deal.tasks.filter(t => t.workstreamId === ws);
+                          const wsProgress = wsTasks.length ? Math.round(wsTasks.filter(t => t.completed).length / wsTasks.length * 100) : 0;
+                          return (
+                            <div key={ws} className="flex-1 h-1 rounded-full" style={{ backgroundColor: `${wsColors[i % wsColors.length]}30` }}>
+                              <div className="h-1 rounded-full transition-all" style={{ backgroundColor: wsColors[i % wsColors.length], width: `${wsProgress}%` }} />
+                            </div>
+                          );
+                        })}
                       </div>
-                      <div className="flex gap-4 mt-2 text-xs text-gray-500">
-                        <span>{deal.tasks.filter((t) => t.completed).length} / {deal.tasks.length} tasks done</span>
-                        <span>{deal.workstreamConfigs.length} workstreams configured</span>
+
+                      <div className="flex items-center justify-between">
+                        <p className="text-xs text-[#9CA3AF]">
+                          {deal.tasks.filter(t => t.completed).length}/{deal.tasks.length} tasks ·{" "}
+                          {deal.workstreamConfigs.length} workstreams configured
+                        </p>
+                        <span className="text-xs text-[#FF6400] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
+                          Open workbench <ArrowRight size={11} />
+                        </span>
                       </div>
-                    </CardContent>
-                  </Card>
-                </Link>
-              );
-            })}
-          </div>
-        )}
+                    </div>
+                  </Link>
+                );
+              })}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
