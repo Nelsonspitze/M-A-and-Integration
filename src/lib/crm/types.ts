@@ -43,6 +43,13 @@ export interface CRMDocument {
   addedAt: string;
 }
 
+export interface CRMTaskNote {
+  id: string;
+  content: string;
+  author?: string;
+  createdAt: string;
+}
+
 export interface CRMTask {
   id: string;
   stage: CRMStage;
@@ -51,6 +58,11 @@ export interface CRMTask {
   description: string;
   completed: boolean;
   completedAt?: string;
+  // Editable fields
+  assignee?: string;
+  dueDate?: string;
+  notes?: CRMTaskNote[];
+  isCustom?: boolean;
 }
 
 export interface TargetCompany {

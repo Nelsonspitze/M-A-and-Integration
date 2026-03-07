@@ -7,11 +7,11 @@ import { Sidebar } from "@/components/sidebar";
 import { TargetCompany, ContactPerson, ContactEntry, CRMTask, CRMDocument, DocType, GeographyFit, Priority, ContactType } from "@/lib/crm/types";
 import { getTarget, saveTarget, deleteTarget, advanceStage, nextStage, STAGES, stageIndex, daysInStage, qualificationScore } from "@/lib/crm/store";
 import { CRM_DEPTS, saveCustomTemplate } from "@/lib/crm/stage-tasks";
-import { CRMTaskAISidebar } from "@/components/crm-task-ai";
+import { CRMTaskPanel } from "@/components/crm-task-panel";
 import { IntegrationStrategy } from "@/lib/pmi/library";
 import {
   ChevronLeft, Trash2, Plus, X, ExternalLink, Upload,
-  Phone, Mail, Users, FileText, Check, CheckCircle2, Circle, AlertTriangle, Lock, Sparkles, UploadCloud,
+  Phone, Mail, Users, FileText, Check, CheckCircle2, Circle, AlertTriangle, Lock, Sparkles, UploadCloud, ShieldCheck,
 } from "lucide-react";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -169,6 +169,8 @@ export default function CRMDetailPage() {
   const [tab, setTab] = useState<"overview" | "checklist" | "contacts" | "timeline" | "documents">("overview");
   const [dirty, setDirty] = useState(false);
   const [activeCrmTask, setActiveCrmTask] = useState<CRMTask | null>(null);
+  const [panelTab, setPanelTab] = useState<"work" | "ai">("work");
+  const [adminMode, setAdminMode] = useState(false);
 
   // Contact log form
   const [logType, setLogType]     = useState<ContactType>("call");
@@ -282,6 +284,42 @@ export default function CRMDetailPage() {
     const tasks = stageTasks.map(ct => ({ workstreamId: ct.workstreamId, title: ct.title, description: ct.description }));
     saveCustomTemplate(t.stage, tasks);
     alert(`✅ ${stageMeta.label} stage tasks set as platform default for all new targets.`);
+  }
+
+  function handleSaveCrmTask(updated: CRMTask) {
+    if (!t) return;
+    const newTasks = t.crmTasks.map(x => x.id === updated.id ? updated : x);
+    const updatedTarget = { ...t, crmTasks: newTasks };
+    setT(updatedTarget);
+    saveTarget(updatedTarget);
+    setActiveCrmTask(updated);
+  }
+
+  function handleDeleteCrmTask(taskId: string) {
+    if (!t) return;
+    const newTasks = t.crmTasks.filter(x => x.id !== taskId);
+    const updatedTarget = { ...t, crmTasks: newTasks };
+    setT(updatedTarget);
+    saveTarget(updatedTarget);
+    setActiveCrmTask(null);
+  }
+
+  function addCustomTask(wsId: string) {
+    if (!t) return;
+    const newTask: CRMTask = {
+      id: crypto.randomUUID(),
+      stage: t.stage,
+      workstreamId: wsId,
+      title: "New task",
+      description: "",
+      completed: false,
+      isCustom: true,
+    };
+    const updatedTarget = { ...t, crmTasks: [...t.crmTasks, newTask] };
+    setT(updatedTarget);
+    saveTarget(updatedTarget);
+    setActiveCrmTask(newTask);
+    setPanelTab("work");
   }
 
   if (!t) return null;
@@ -404,7 +442,15 @@ export default function CRMDetailPage() {
                   <h2 className="text-xl font-light text-[#242C2D]">Department evaluation tasks</h2>
                   <p className="text-xs text-[#9CA3AF] mt-1">All departments must complete their tasks before advancing.</p>
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setAdminMode(a => !a)}
+                    className={`flex items-center gap-1.5 text-[11px] font-mono px-3 py-1.5 rounded-lg border transition-colors ${
+                      adminMode
+                        ? "bg-[#242C2D] text-white border-[#242C2D]"
+                        : "text-[#9CA3AF] border-[#E5E7EB] hover:border-[#374151] hover:text-[#374151]"
+                    }`}>
+                    <ShieldCheck size={12} /> Admin
+                  </button>
                   <button onClick={pushAsTemplate}
                     className="flex items-center gap-1.5 text-[11px] font-mono text-[#9CA3AF] border border-[#E5E7EB] px-3 py-1.5 rounded-lg hover:border-[#FF6400]/30 hover:text-[#FF6400] transition-colors">
                     ↑ Set as platform default
@@ -478,25 +524,41 @@ export default function CRMDetailPage() {
                                   : <Circle size={16} className="text-[#D1D5DB] group-hover/task:text-[#FF6400] transition-colors" />
                                 }
                               </button>
-                              {/* Content */}
-                              <div className="flex-1 min-w-0">
-                                <p className={`text-sm ${ct.completed ? "line-through text-[#9CA3AF]" : "text-[#242C2D]"}`}>{ct.title}</p>
-                                <p className="text-[11px] text-[#9CA3AF] mt-0.5 leading-relaxed">{ct.description}</p>
-                              </div>
-                              {/* Sparkle button — work with AI */}
+                              {/* Content — click to open Work panel */}
                               <button
-                                onClick={() => setActiveCrmTask(activeCrmTask?.id === ct.id ? null : ct)}
+                                onClick={() => { setActiveCrmTask(activeCrmTask?.id === ct.id ? null : ct); setPanelTab("work"); }}
+                                className="flex-1 min-w-0 text-left">
+                                <p className={`text-sm ${ct.completed ? "line-through text-[#9CA3AF]" : "text-[#242C2D]"}`}>{ct.title}</p>
+                                {ct.description && <p className="text-[11px] text-[#9CA3AF] mt-0.5 leading-relaxed">{ct.description}</p>}
+                                {(ct.notes?.length ?? 0) > 0 && (
+                                  <p className="text-[10px] text-[#FF6400]/60 mt-0.5">{ct.notes!.length} finding{ct.notes!.length > 1 ? "s" : ""}</p>
+                                )}
+                                {ct.assignee && (
+                                  <p className="text-[10px] text-[#9CA3AF] mt-0.5">→ {ct.assignee}</p>
+                                )}
+                              </button>
+                              {/* AI sparkle button */}
+                              <button
+                                onClick={() => { setActiveCrmTask(activeCrmTask?.id === ct.id && panelTab === "ai" ? null : ct); setPanelTab("ai"); }}
                                 className={`shrink-0 mt-0.5 p-1 rounded-lg transition-all ${
-                                  activeCrmTask?.id === ct.id
+                                  activeCrmTask?.id === ct.id && panelTab === "ai"
                                     ? "bg-[#FFEFE5] text-[#FF6400]"
                                     : "text-[#D1D5DB] opacity-0 group-hover/task:opacity-100 hover:bg-[#FFEFE5] hover:text-[#FF6400]"
                                 }`}
-                                title="Work on this with AI">
+                                title="Ask AI about this task">
                                 <Sparkles size={13} />
                               </button>
                             </div>
                           ))}
                         </div>
+                        {/* Admin: add custom task */}
+                        {adminMode && (
+                          <button
+                            onClick={() => addCustomTask(wsId)}
+                            className="w-full px-4 py-2.5 flex items-center gap-2 text-[11px] text-[#9CA3AF] hover:text-[#FF6400] hover:bg-[#FFF7ED] border-t border-[#F3F4F6] transition-colors">
+                            <Plus size={12} /> Add task
+                          </button>
+                        )}
                       </div>
                     );
                   })}
@@ -882,13 +944,17 @@ export default function CRMDetailPage() {
 
         </div>{/* end scrollable content */}
 
-        {/* CRM Task AI sidebar */}
+        {/* CRM Task panel */}
         {activeCrmTask && (
-          <CRMTaskAISidebar
+          <CRMTaskPanel
             key={activeCrmTask.id}
             task={activeCrmTask}
             company={t}
+            isAdmin={adminMode}
+            initialTab={panelTab}
             onClose={() => setActiveCrmTask(null)}
+            onSave={handleSaveCrmTask}
+            onDelete={() => handleDeleteCrmTask(activeCrmTask.id)}
           />
         )}
         </div>{/* end flex content+sidebar */}
