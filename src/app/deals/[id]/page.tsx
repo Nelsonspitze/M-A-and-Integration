@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { Deal, getDeal, saveDeal } from "@/lib/store";
+import { Deal, getDeal, saveDeal, TeamMember } from "@/lib/store";
+import { scoreForDeal, medal } from "@/lib/scoring";
 import { INTEGRATION_STRATEGIES, IntegrationStrategy, PMI_LIBRARY } from "@/lib/pmi/library";
 import { Sidebar } from "@/components/sidebar";
-import { ArrowRight, Sparkles, AlertTriangle } from "lucide-react";
+import { ArrowRight, Sparkles, AlertTriangle, Plus, X } from "lucide-react";
 import Link from "next/link";
 
 const wsColors: Record<string, { dot: string; light: string }> = {
@@ -50,10 +51,19 @@ function gameBadge(p: number) {
   return "🎯 Day 1 mode";
 }
 
+const MEMBER_COLORS = [
+  "bg-[#242C2D]", "bg-[#74A0F4]", "bg-[#CDADFC]", "bg-[#9AC183]",
+  "bg-[#FF6400]", "bg-[#FCDCA0]", "bg-[#D4B800]", "bg-[#8A95A5]",
+];
+
 export default function DealPage() {
   const params = useParams();
   const router = useRouter();
   const [deal, setDeal] = useState<Deal | null>(null);
+  const [showAddMember, setShowAddMember] = useState(false);
+  const [newMember, setNewMember] = useState({ name: "", role: "", color: MEMBER_COLORS[0] });
+  const [scoreTab, setScoreTab] = useState<"people" | "dept">("people");
+  const score = useMemo(() => deal ? scoreForDeal(deal) : null, [deal]);
 
   useEffect(() => {
     const d = getDeal(params.id as string);
@@ -61,7 +71,7 @@ export default function DealPage() {
     setDeal(d);
   }, [params.id, router]);
 
-  if (!deal) return null;
+  if (!deal || !score) return null;
 
   const progress = getDealProgress(deal);
   const days = Math.max(0, Math.floor((Date.now() - new Date(deal.closeDate).getTime()) / 86400000));
@@ -74,6 +84,24 @@ export default function DealPage() {
 
   // Prompt to generate first AI plan if deal is fresh
   const hasAnyPlan = Object.keys(deal.actionPlans).length > 0;
+
+  function addMember() {
+    if (!newMember.name || !newMember.role) return;
+    const initials = newMember.name.split(" ").map(w => w[0]).join("").toUpperCase().slice(0, 2);
+    const member: TeamMember = {
+      id: crypto.randomUUID(), name: newMember.name, role: newMember.role,
+      initials, color: newMember.color,
+    };
+    const updated: Deal = { ...deal!, team: [...(deal!.team ?? []), member] };
+    saveDeal(updated); setDeal(updated);
+    setNewMember({ name: "", role: "", color: MEMBER_COLORS[(deal!.team?.length ?? 0) % MEMBER_COLORS.length] });
+    setShowAddMember(false);
+  }
+
+  function removeMember(id: string) {
+    const updated: Deal = { ...deal!, team: (deal!.team ?? []).filter(m => m.id !== id) };
+    saveDeal(updated); setDeal(updated);
+  }
 
   return (
     <div className="flex h-screen bg-[#FAFAFA]">
@@ -215,6 +243,207 @@ export default function DealPage() {
               })}
             </div>
           </div>
+          {/* Scoreboard */}
+          <div className="mt-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-medium text-[#242C2D]">Scoreboard</h2>
+              <div className="flex items-center gap-3">
+                {score.totalOverdue > 0 && (
+                  <span className="text-[10px] font-mono px-2 py-1 rounded-full bg-[#FFEFE5] text-[#FF6400] flex items-center gap-1">
+                    ⚠ {score.totalOverdue} overdue
+                  </span>
+                )}
+                <div className="flex rounded-lg border border-[#E5E7EB] overflow-hidden text-xs">
+                  {(["people", "dept"] as const).map(tab => (
+                    <button key={tab} onClick={() => setScoreTab(tab)}
+                      className={`px-3 py-1.5 font-medium transition-colors ${scoreTab === tab ? "bg-[#242C2D] text-white" : "text-[#6B7280] hover:bg-[#FAFAFA]"}`}>
+                      {tab === "people" ? "People" : "Departments"}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            {/* Health score banner */}
+            <div className={`rounded-xl p-4 mb-3 flex items-center justify-between ${
+              score.healthScore >= 70 ? "bg-[#9AC183]/10 border border-[#9AC183]/30" :
+              score.healthScore >= 40 ? "bg-[#FCDCA0]/30 border border-[#FCDCA0]" :
+              "bg-[#FFEFE5] border border-[#FFD4B8]"
+            }`}>
+              <div>
+                <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-0.5">Tasks on schedule</p>
+                <p className="text-xs text-[#6B7280]">
+                  {score.dueCompleted} of {score.dueTasks} due tasks completed
+                </p>
+              </div>
+              <span className={`text-4xl font-light heading-tight ${
+                score.healthScore >= 70 ? "text-[#9AC183]" :
+                score.healthScore >= 40 ? "text-[#D4B800]" : "text-[#FF6400]"
+              }`}>{score.healthScore}%</span>
+            </div>
+
+            {/* People leaderboard */}
+            {scoreTab === "people" && (
+              <div className="bg-white border border-[#E5E7EB] rounded-xl overflow-hidden">
+                {score.personScores.length === 0 ? (
+                  <div className="px-5 py-8 text-center">
+                    <p className="text-sm text-[#9CA3AF]">Add team members to see the leaderboard.</p>
+                  </div>
+                ) : (
+                  score.personScores.map((ps, i) => (
+                    <div key={ps.member.id} className={`flex items-center gap-4 px-5 py-3.5 ${i !== score.personScores.length - 1 ? "border-b border-[#F3F4F6]" : ""}`}>
+                      <span className="text-lg w-7 text-center shrink-0">{medal(i)}</span>
+                      <div className={`w-9 h-9 rounded-full ${ps.member.color} flex items-center justify-center shrink-0`}>
+                        <span className="text-xs font-bold text-white">{ps.member.initials}</span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <p className="text-sm font-medium text-[#242C2D]">{ps.member.name}</p>
+                          <p className="text-[10px] text-[#9CA3AF]">{ps.member.role}</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-24 bg-[#F3F4F6] rounded-full overflow-hidden">
+                            <div className="h-1.5 rounded-full bg-[#9AC183] transition-all"
+                              style={{ width: `${ps.assigned > 0 ? Math.round(ps.completed / ps.assigned * 100) : 0}%` }} />
+                          </div>
+                          <span className="text-[10px] font-mono text-[#9CA3AF]">{ps.completed}/{ps.assigned}</span>
+                          {ps.overdue > 0 && (
+                            <span className="text-[9px] font-mono text-[#FF6400] bg-[#FFEFE5] px-1.5 py-0.5 rounded-full">
+                              {ps.overdue} overdue
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`text-lg font-light heading-tight ${ps.points >= 0 ? "text-[#242C2D]" : "text-[#FF6400]"}`}>
+                          {ps.points > 0 ? "+" : ""}{ps.points}
+                        </p>
+                        <p className="text-[9px] font-mono text-[#9CA3AF]">pts</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+
+            {/* Dept leaderboard */}
+            {scoreTab === "dept" && (
+              <div className="bg-white border border-[#E5E7EB] rounded-xl overflow-hidden">
+                {score.deptScores.length === 0 ? (
+                  <div className="px-5 py-8 text-center">
+                    <p className="text-sm text-[#9CA3AF]">No tasks yet.</p>
+                  </div>
+                ) : (
+                  score.deptScores.map((ds, i) => (
+                    <div key={ds.wsId} className={`flex items-center gap-4 px-5 py-3.5 ${i !== score.deptScores.length - 1 ? "border-b border-[#F3F4F6]" : ""}`}>
+                      <span className="text-lg w-7 text-center shrink-0">{medal(i)}</span>
+                      <span className="text-xl shrink-0">{ds.icon}</span>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-[#242C2D] mb-1">{ds.name}</p>
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-24 bg-[#F3F4F6] rounded-full overflow-hidden">
+                            <div className="h-1.5 rounded-full bg-[#9AC183] transition-all"
+                              style={{ width: `${ds.total > 0 ? Math.round(ds.completed / ds.total * 100) : 0}%` }} />
+                          </div>
+                          <span className="text-[10px] font-mono text-[#9CA3AF]">{ds.completed}/{ds.total}</span>
+                          {ds.overdue > 0 && (
+                            <span className="text-[9px] font-mono text-[#FF6400] bg-[#FFEFE5] px-1.5 py-0.5 rounded-full">
+                              {ds.overdue} overdue
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <p className={`text-lg font-light heading-tight ${ds.points >= 0 ? "text-[#242C2D]" : "text-[#FF6400]"}`}>
+                          {ds.points > 0 ? "+" : ""}{ds.points}
+                        </p>
+                        <p className="text-[9px] font-mono text-[#9CA3AF]">pts</p>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Team */}
+          <div className="mt-10">
+            <div className="flex items-center justify-between mb-4">
+              <h2 className="font-medium text-[#242C2D]">Team</h2>
+              <button onClick={() => setShowAddMember(!showAddMember)}
+                className="flex items-center gap-1 text-xs font-medium text-[#6B7280] hover:text-[#FF6400] transition-colors">
+                {showAddMember ? <X size={12} /> : <Plus size={12} />}
+                {showAddMember ? "Cancel" : "Add member"}
+              </button>
+            </div>
+
+            {showAddMember && (
+              <div className="bg-white border border-[#E5E7EB] rounded-xl p-4 mb-3 space-y-3">
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] block mb-1">Name</label>
+                    <input
+                      placeholder="e.g. Anna Schmidt"
+                      value={newMember.name}
+                      onChange={e => setNewMember({ ...newMember, name: e.target.value })}
+                      onKeyDown={e => e.key === "Enter" && addMember()}
+                      className="w-full h-9 px-3 text-sm rounded-lg border border-[#E5E7EB] bg-white outline-none focus:border-[#FF6400]/50"
+                      autoFocus
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] block mb-1">Role</label>
+                    <input
+                      placeholder="e.g. CFO"
+                      value={newMember.role}
+                      onChange={e => setNewMember({ ...newMember, role: e.target.value })}
+                      onKeyDown={e => e.key === "Enter" && addMember()}
+                      className="w-full h-9 px-3 text-sm rounded-lg border border-[#E5E7EB] bg-white outline-none focus:border-[#FF6400]/50"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] block mb-2">Colour</label>
+                  <div className="flex gap-2">
+                    {MEMBER_COLORS.map(c => (
+                      <button key={c} onClick={() => setNewMember({ ...newMember, color: c })}
+                        className={`w-6 h-6 rounded-full ${c} transition-transform ${newMember.color === c ? "ring-2 ring-offset-1 ring-[#FF6400] scale-110" : "hover:scale-110"}`} />
+                    ))}
+                  </div>
+                </div>
+                <button onClick={addMember} disabled={!newMember.name || !newMember.role}
+                  className="sf-gradient text-white text-xs font-medium px-4 py-2 rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40">
+                  Add to team
+                </button>
+              </div>
+            )}
+
+            {(deal.team?.length ?? 0) === 0 && !showAddMember ? (
+              <div className="bg-white border border-dashed border-[#E5E7EB] rounded-xl p-6 text-center">
+                <p className="text-sm text-[#9CA3AF]">No team members yet.</p>
+                <p className="text-xs text-[#9CA3AF] mt-1">Add team members to assign tasks in each workstream.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-2">
+                {(deal.team ?? []).map(m => (
+                  <div key={m.id} className="bg-white border border-[#E5E7EB] rounded-xl px-4 py-3 flex items-center gap-3 group">
+                    <div className={`w-9 h-9 rounded-full ${m.color} flex items-center justify-center shrink-0`}>
+                      <span className="text-xs font-bold text-white">{m.initials}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-medium text-[#242C2D] truncate">{m.name}</p>
+                      <p className="text-[11px] text-[#9CA3AF]">{m.role}</p>
+                    </div>
+                    <button onClick={() => removeMember(m.id)}
+                      className="opacity-0 group-hover:opacity-100 text-[#D1D5DB] hover:text-[#FF6400] transition-all">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
         </div>
       </main>
     </div>

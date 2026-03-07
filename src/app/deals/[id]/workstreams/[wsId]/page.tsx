@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { Deal, getDeal, saveDeal, Task, WorkstreamConfig } from "@/lib/store";
 import { INTEGRATION_STRATEGIES, IntegrationStrategy, PMI_LIBRARY, IntegrationItem } from "@/lib/pmi/library";
 import { Sidebar } from "@/components/sidebar";
-import { AISidebar, TeamAvatar, UnassignedAvatar } from "@/components/ai-sidebar";
+import { AISidebar, TaskAISidebar, TeamAvatar, UnassignedAvatar } from "@/components/ai-sidebar";
 import { Sparkles, CheckCircle2, Circle, AlertTriangle, ChevronDown, ChevronUp, Plus, X, ArrowLeft } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
@@ -32,11 +32,16 @@ function getWsStrategy(d: Deal, wsId: string): IntegrationStrategy {
 }
 
 // ── Item card ──────────────────────────────────────────────────────────────────
-function ItemCard({ item, deal, workstreamId, onUpdate, onOpenAI }: {
-  item: IntegrationItem; deal: Deal; workstreamId: string;
-  onUpdate: (d: Deal) => void; onOpenAI: () => void;
+function ItemCard({ item, deal, workstreamId, wsName, onUpdate, onOpenAI, onOpenTaskAI, forceOpen }: {
+  item: IntegrationItem; deal: Deal; workstreamId: string; wsName: string;
+  onUpdate: (d: Deal) => void; onOpenAI: () => void; onOpenTaskAI: (taskId: string) => void; forceOpen?: boolean;
 }) {
   const [open, setOpen] = useState(false);
+  const prevForceOpen = useRef(false);
+  useEffect(() => {
+    if (forceOpen && !prevForceOpen.current) setOpen(true);
+    prevForceOpen.current = forceOpen ?? false;
+  }, [forceOpen]);
   const [generating, setGenerating] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", assigneeId: "", dueDate: "" });
@@ -213,19 +218,34 @@ function ItemCard({ item, deal, workstreamId, onUpdate, onOpenAI }: {
                     )}
                     <div className="space-y-0.5">
                       {phaseTasks.map(task => {
-                        const member = deal.team.find(m => m.id === task.assigneeId);
+                        const member = (deal.team ?? []).find(m => m.id === task.assigneeId);
+                        const isDept = task.assigneeId?.startsWith("dept:");
+                        const isOverdue = !task.completed && task.dueDate && task.dueDate < new Date().toISOString().split("T")[0];
                         return (
-                          <button key={task.id} onClick={() => toggleTask(task.id)}
-                            className="w-full flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[#FAFAFA] text-left transition-colors">
-                            {task.completed
-                              ? <CheckCircle2 size={15} className="shrink-0" style={{ color: colors.dot }} />
-                              : <Circle size={15} className="text-[#D1D5DB] shrink-0" />}
-                            <span className={`text-xs flex-1 ${task.completed ? "line-through text-[#9CA3AF]" : "text-[#374151]"}`}>
-                              {task.title}
-                            </span>
-                            {task.dueDate && <span className="text-[10px] font-mono text-[#9CA3AF]">{task.dueDate}</span>}
-                            {member ? <TeamAvatar member={member} /> : task.assigneeId ? <UnassignedAvatar /> : null}
-                          </button>
+                          <div key={task.id} className="flex items-center gap-1 group/task">
+                            <button onClick={() => toggleTask(task.id)}
+                              className="flex-1 flex items-center gap-2.5 px-2 py-2 rounded-lg hover:bg-[#FAFAFA] text-left transition-colors min-w-0">
+                              {task.completed
+                                ? <CheckCircle2 size={15} className="shrink-0" style={{ color: colors.dot }} />
+                                : <Circle size={15} className={`shrink-0 ${isOverdue ? "text-[#FF6400]" : "text-[#D1D5DB]"}`} />}
+                              <span className={`text-xs flex-1 truncate ${task.completed ? "line-through text-[#9CA3AF]" : "text-[#374151]"}`}>
+                                {task.title}
+                              </span>
+                              {isOverdue && <span className="text-[9px] font-mono text-[#FF6400] bg-[#FFEFE5] px-1.5 py-0.5 rounded-full shrink-0">overdue</span>}
+                              {task.dueDate && !isOverdue && <span className="text-[10px] font-mono text-[#9CA3AF] shrink-0">{task.dueDate}</span>}
+                              {member ? <TeamAvatar member={member} /> : isDept ? (
+                                <span className="text-[9px] font-mono px-2 py-0.5 rounded-full bg-[#F3F4F6] text-[#6B7280] shrink-0">
+                                  {task.assigneeId!.replace("dept:", "")}
+                                </span>
+                              ) : null}
+                            </button>
+                            <button
+                              onClick={() => onOpenTaskAI(task.id)}
+                              title="Ask AI about this task"
+                              className="opacity-0 group-hover/task:opacity-100 shrink-0 p-1.5 rounded-lg text-[#CDADFC] hover:bg-[#F5F0FE] transition-all">
+                              <Sparkles size={11} />
+                            </button>
+                          </div>
                         );
                       })}
                     </div>
@@ -245,9 +265,16 @@ function ItemCard({ item, deal, workstreamId, onUpdate, onOpenAI }: {
                     onChange={e => setNewTask({ ...newTask, assigneeId: e.target.value })}
                     className="h-8 text-xs rounded-lg border border-[#E5E7EB] bg-white px-2 text-[#374151]">
                     <option value="">Unassigned</option>
-                    {deal.team.map(m => (
-                      <option key={m.id} value={m.id}>{m.name}</option>
-                    ))}
+                    <optgroup label="Department">
+                      <option value={`dept:${workstreamId}`}>{wsName} Team</option>
+                    </optgroup>
+                    {(deal.team ?? []).length > 0 && (
+                      <optgroup label="People">
+                        {(deal.team ?? []).map(m => (
+                          <option key={m.id} value={m.id}>{m.name}</option>
+                        ))}
+                      </optgroup>
+                    )}
                   </select>
                   <Input type="date" value={newTask.dueDate}
                     onChange={e => setNewTask({ ...newTask, dueDate: e.target.value })}
@@ -272,6 +299,8 @@ export default function WorkstreamPage() {
   const router = useRouter();
   const [deal, setDeal] = useState<Deal | null>(null);
   const [activeItemId, setActiveItemId] = useState<string | null>(null);
+  const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
+  const [justLoadedItemId, setJustLoadedItemId] = useState<string | null>(null);
 
   useEffect(() => {
     const d = getDeal(params.id as string);
@@ -383,8 +412,11 @@ export default function WorkstreamPage() {
                     item={item}
                     deal={deal}
                     workstreamId={ws.id}
+                    wsName={ws.name}
                     onUpdate={setDeal}
-                    onOpenAI={() => setActiveItemId(item.id)}
+                    onOpenAI={() => { setActiveItemId(item.id); setActiveTaskId(null); }}
+                    onOpenTaskAI={taskId => { setActiveTaskId(taskId); setActiveItemId(null); }}
+                    forceOpen={item.id === justLoadedItemId}
                   />
                 ))}
               </div>
@@ -392,7 +424,7 @@ export default function WorkstreamPage() {
           </div>
         </main>
 
-        {/* AI Sidebar */}
+        {/* Item AI Sidebar */}
         {activeItem && (
           <AISidebar
             item={activeItem}
@@ -400,9 +432,25 @@ export default function WorkstreamPage() {
             workstreamId={ws.id}
             wsStrategy={wsStrategy}
             onClose={() => setActiveItemId(null)}
-            onUpdate={d => { setDeal(d); }}
+            onUpdate={d => { setJustLoadedItemId(activeItemId); setDeal(d); }}
           />
         )}
+
+        {/* Task AI Sidebar */}
+        {activeTaskId && (() => {
+          const activeTask = deal.tasks.find(t => t.id === activeTaskId);
+          const parentItem = activeTask ? activeItems.find(i => i.id === activeTask.itemId) : null;
+          if (!activeTask || !parentItem) return null;
+          return (
+            <TaskAISidebar
+              task={activeTask}
+              item={parentItem}
+              deal={deal}
+              wsStrategy={wsStrategy}
+              onClose={() => setActiveTaskId(null)}
+            />
+          );
+        })()}
       </div>
     </div>
   );

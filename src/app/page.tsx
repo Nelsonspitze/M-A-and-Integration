@@ -6,6 +6,7 @@ import Link from "next/link";
 import { INTEGRATION_STRATEGIES } from "@/lib/pmi/library";
 import { Sidebar } from "@/components/sidebar";
 import { loadDemo, isDemoLoaded } from "@/lib/demo";
+import { scoreForDeal } from "@/lib/scoring";
 import { ArrowRight, Calendar, Zap } from "lucide-react";
 
 function getProgress(deal: Deal) {
@@ -108,6 +109,7 @@ export default function Home() {
                 const days = getDays(deal.closeDate);
                 const h = health(progress);
                 const strategy = INTEGRATION_STRATEGIES.find(s => s.value === deal.overallStrategy);
+                const { totalOverdue, healthScore } = scoreForDeal(deal);
 
                 return (
                   <Link key={deal.id} href={`/deals/${deal.id}`}>
@@ -124,6 +126,11 @@ export default function Home() {
                             <span className="text-[10px] font-mono text-[#9CA3AF] flex items-center gap-1">
                               <Calendar size={10} /> Day {days}
                             </span>
+                            {totalOverdue > 0 && (
+                              <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-[#FFEFE5] text-[#FF6400]">
+                                ⚠ {totalOverdue} overdue
+                              </span>
+                            )}
                           </div>
                           <h3 className="font-medium text-[#242C2D]">{deal.name}</h3>
                           <p className="text-xs text-[#9CA3AF] mt-0.5">{deal.platformCompany} × {deal.addOnCompany}</p>
@@ -150,7 +157,9 @@ export default function Home() {
                       <div className="flex items-center justify-between">
                         <p className="text-xs text-[#9CA3AF]">
                           {deal.tasks.filter(t => t.completed).length}/{deal.tasks.length} tasks ·{" "}
-                          {deal.workstreamConfigs.length} workstreams configured
+                          <span className={healthScore < 70 && healthScore < 100 ? "text-[#D4B800]" : ""}>
+                            {healthScore}% on schedule
+                          </span>
                         </p>
                         <span className="text-xs text-[#FF6400] opacity-0 group-hover:opacity-100 transition-opacity flex items-center gap-1">
                           Open workbench <ArrowRight size={11} />

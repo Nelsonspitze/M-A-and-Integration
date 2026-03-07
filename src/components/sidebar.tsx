@@ -37,12 +37,20 @@ export function Sidebar() {
       {/* Logo */}
       <div className="px-5 pt-6 pb-5">
         <div className="flex items-center gap-2.5">
-          <div className="w-7 h-7 rounded-lg sf-gradient flex items-center justify-center shrink-0">
-            <span className="text-white text-[10px] font-bold">IO</span>
-          </div>
+          {/* Twinrope interlocking circles */}
+          <svg width="34" height="22" viewBox="0 0 34 22" fill="none" className="shrink-0">
+            <defs>
+              <linearGradient id="tr" x1="0" y1="0" x2="34" y2="22" gradientUnits="userSpaceOnUse">
+                <stop offset="0%" stopColor="#7B3F00" />
+                <stop offset="100%" stopColor="#CD853F" />
+              </linearGradient>
+            </defs>
+            <circle cx="11" cy="11" r="9" stroke="url(#tr)" strokeWidth="2.2" fill="none" />
+            <circle cx="23" cy="11" r="9" stroke="url(#tr)" strokeWidth="2.2" fill="none" />
+          </svg>
           <div>
-            <p className="text-sm font-semibold text-[#242C2D] leading-tight">IntegrationOS</p>
-            <p className="text-[10px] font-mono text-[#9CA3AF]">by LinkNature</p>
+            <p className="text-sm font-semibold text-[#242C2D] leading-tight tracking-tight">twinrope</p>
+            <p className="text-[9px] font-mono text-[#9CA3AF] tracking-widest uppercase">M&A · Integration · Growth</p>
           </div>
         </div>
       </div>

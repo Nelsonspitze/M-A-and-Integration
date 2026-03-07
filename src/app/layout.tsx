@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "IntegrationOS",
-  description: "AI-powered post-merger integration platform",
+  title: "twinrope — M&A · Integration · Growth",
+  description: "Acquire with clarity. Integrate with purpose.",
 };
 
 export default function RootLayout({
