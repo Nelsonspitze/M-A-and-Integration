@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from "react";
 import { Deal, Task, TeamMember, saveDeal } from "@/lib/store";
 import { IntegrationItem, IntegrationStrategy } from "@/lib/pmi/library";
 import { X, Sparkles, Send, Download, User } from "lucide-react";
+import { MarkdownMessage } from "./markdown-message";
 
 interface Message {
   role: "user" | "assistant";
@@ -231,11 +232,11 @@ export function AISidebar({ item, deal, workstreamId, wsStrategy, onClose, onUpd
                     </div>
                     <span className="text-[10px] font-mono text-[#9CA3AF]">Claude</span>
                   </div>
-                  <div className="text-xs text-[#374151] leading-relaxed whitespace-pre-wrap bg-[#FAFAFA] rounded-xl p-3 border border-[#F3F4F6]">
-                    {m.content}
-                    {streaming && i === messages.length - 1 && (
-                      <span className="inline-block w-1.5 h-3.5 bg-[#FF6400] ml-0.5 animate-pulse rounded-sm" />
-                    )}
+                  <div className="bg-[#FAFAFA] rounded-xl p-3 border border-[#F3F4F6]">
+                    <MarkdownMessage
+                      content={m.content}
+                      streaming={streaming && i === messages.length - 1}
+                    />
                   </div>
                 </div>
               ) : (
@@ -453,11 +454,11 @@ export function TaskAISidebar({ task, item, deal, wsStrategy, onClose }: TaskPro
                     </div>
                     <span className="text-[10px] font-mono text-[#9CA3AF]">Claude</span>
                   </div>
-                  <div className="text-xs text-[#374151] leading-relaxed whitespace-pre-wrap bg-[#FAFAFA] rounded-xl p-3 border border-[#F3F4F6]">
-                    {m.content}
-                    {streaming && i === messages.length - 1 && (
-                      <span className="inline-block w-1.5 h-3.5 bg-[#FF6400] ml-0.5 animate-pulse rounded-sm" />
-                    )}
+                  <div className="bg-[#FAFAFA] rounded-xl p-3 border border-[#F3F4F6]">
+                    <MarkdownMessage
+                      content={m.content}
+                      streaming={streaming && i === messages.length - 1}
+                    />
                   </div>
                 </div>
               ) : (
