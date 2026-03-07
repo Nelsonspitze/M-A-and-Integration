@@ -213,10 +213,44 @@ export const STAGE_TASKS: Partial<Record<CRMStage, TaskTemplate[]>> = {
   ],
 };
 
+// ── Custom template management ────────────────────────────────────────────────
+
+const TEMPLATE_KEY = "crm_task_templates";
+
+type TemplateStore = Partial<Record<CRMStage, TaskTemplate[]>>;
+
+function getTemplateStore(): TemplateStore {
+  if (typeof window === "undefined") return {};
+  try { return JSON.parse(localStorage.getItem(TEMPLATE_KEY) ?? "{}"); } catch { return {}; }
+}
+
+/** Save tasks from a target's checklist as the platform default for that stage */
+export function saveCustomTemplate(stage: CRMStage, tasks: { workstreamId: string; title: string; description: string }[]): void {
+  const store = getTemplateStore();
+  store[stage] = tasks;
+  localStorage.setItem(TEMPLATE_KEY, JSON.stringify(store));
+  window.dispatchEvent(new Event("crm-templates-update"));
+}
+
+/** Reset a stage back to built-in defaults */
+export function resetCustomTemplate(stage: CRMStage): void {
+  const store = getTemplateStore();
+  delete store[stage];
+  localStorage.setItem(TEMPLATE_KEY, JSON.stringify(store));
+  window.dispatchEvent(new Event("crm-templates-update"));
+}
+
+/** Which stages have custom templates */
+export function customTemplateStages(): CRMStage[] {
+  return Object.keys(getTemplateStore()) as CRMStage[];
+}
+
 // ── Generator ─────────────────────────────────────────────────────────────────
 
 export function generateStageTasks(stage: CRMStage): CRMTask[] {
-  return (STAGE_TASKS[stage] ?? []).map(t => ({
+  const store = getTemplateStore();
+  const templates = store[stage] ?? STAGE_TASKS[stage] ?? [];
+  return templates.map(t => ({
     id: crypto.randomUUID(),
     stage,
     workstreamId: t.workstreamId,

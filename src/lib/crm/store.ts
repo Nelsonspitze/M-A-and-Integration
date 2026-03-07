@@ -42,6 +42,7 @@ export function createTarget(data: Pick<TargetCompany, "name" | "sector"> & Part
     contacts: [],
     contactLog: [],
     crmTasks: [],
+    documents: [],
     stageEnteredAt: { prospect: now },
     createdAt: now,
     updatedAt: now,

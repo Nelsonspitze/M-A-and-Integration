@@ -4,13 +4,14 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { Sidebar } from "@/components/sidebar";
-import { TargetCompany, ContactPerson, ContactEntry, CRMTask, GeographyFit, Priority, ContactType } from "@/lib/crm/types";
+import { TargetCompany, ContactPerson, ContactEntry, CRMTask, CRMDocument, DocType, GeographyFit, Priority, ContactType } from "@/lib/crm/types";
 import { getTarget, saveTarget, deleteTarget, advanceStage, nextStage, STAGES, stageIndex, daysInStage, qualificationScore } from "@/lib/crm/store";
-import { CRM_DEPTS } from "@/lib/crm/stage-tasks";
+import { CRM_DEPTS, saveCustomTemplate } from "@/lib/crm/stage-tasks";
+import { CRMTaskAISidebar } from "@/components/crm-task-ai";
 import { IntegrationStrategy } from "@/lib/pmi/library";
 import {
-  ChevronLeft, Trash2, Plus, X,
-  Phone, Mail, Users, FileText, Check, CheckCircle2, Circle, AlertTriangle, Lock,
+  ChevronLeft, Trash2, Plus, X, ExternalLink, Upload,
+  Phone, Mail, Users, FileText, Check, CheckCircle2, Circle, AlertTriangle, Lock, Sparkles, UploadCloud,
 } from "lucide-react";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -99,14 +100,75 @@ function Field({ label, value, onChange, type = "text", placeholder }: {
   );
 }
 
+// ── Document helpers ──────────────────────────────────────────────────────────
+
+export const DOC_ICONS: Record<string, string> = {
+  link: "🔗", note: "📝", pdf: "📄", excel: "📊",
+  word: "📃", presentation: "📋", contract: "⚖️", financial: "💰", other: "📁",
+};
+
+function DocRow({ doc, onRemove }: { doc: CRMDocument; onRemove: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  const dept = doc.workstreamId ? CRM_DEPTS[doc.workstreamId] : null;
+  const stageMeta = doc.stage ? STAGES.find(s => s.id === doc.stage) : null;
+
+  return (
+    <div className="bg-white border border-[#E5E7EB] rounded-xl overflow-hidden">
+      <div className="px-4 py-3 flex items-center gap-3">
+        <span className="text-lg shrink-0">{DOC_ICONS[doc.type] ?? "📁"}</span>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium text-[#242C2D]">{doc.title}</p>
+          <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+            {stageMeta && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-full bg-[#F3F4F6] text-[#374151]">{stageMeta.label}</span>
+            )}
+            {dept && (
+              <span className="text-[10px] font-mono text-[#6B7280]">{dept.icon} {dept.name}</span>
+            )}
+            <span className="text-[10px] font-mono text-[#D1D5DB]">{doc.addedAt.split("T")[0]}</span>
+          </div>
+        </div>
+        <div className="flex items-center gap-1 shrink-0">
+          {doc.url && (
+            <a href={doc.url} target="_blank" rel="noreferrer"
+              className="p-1.5 text-[#9CA3AF] hover:text-[#74A0F4] transition-colors rounded-lg hover:bg-[#EEF2FF]">
+              <ExternalLink size={14} />
+            </a>
+          )}
+          {doc.content && (
+            <button onClick={() => setExpanded(v => !v)}
+              className="p-1.5 text-[#9CA3AF] hover:text-[#FF6400] transition-colors rounded-lg hover:bg-[#FFEFE5]">
+              <FileText size={14} />
+            </button>
+          )}
+          <button onClick={onRemove} className="p-1.5 text-[#D1D5DB] hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">
+            <X size={13} />
+          </button>
+        </div>
+      </div>
+      {expanded && doc.content && (
+        <div className="px-4 pb-4 border-t border-[#F3F4F6]">
+          <pre className="mt-3 text-xs text-[#374151] whitespace-pre-wrap leading-relaxed font-sans">{doc.content}</pre>
+        </div>
+      )}
+      {doc.notes && !expanded && (
+        <div className="px-4 pb-3 border-t border-[#F3F4F6] pt-2">
+          <p className="text-[11px] text-[#9CA3AF]">{doc.notes}</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default function CRMDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const [t, setT] = useState<TargetCompany | null>(null);
-  const [tab, setTab] = useState<"overview" | "checklist" | "contacts" | "timeline">("overview");
+  const [tab, setTab] = useState<"overview" | "checklist" | "contacts" | "timeline" | "documents">("overview");
   const [dirty, setDirty] = useState(false);
+  const [activeCrmTask, setActiveCrmTask] = useState<CRMTask | null>(null);
 
   // Contact log form
   const [logType, setLogType]     = useState<ContactType>("call");
@@ -118,6 +180,16 @@ export default function CRMDetailPage() {
   const [cpName, setCpName]   = useState("");
   const [cpRole, setCpRole]   = useState("");
   const [cpEmail, setCpEmail] = useState("");
+
+  // Document form
+  const [showAddDoc, setShowAddDoc] = useState(false);
+  const [docTitle, setDocTitle]   = useState("");
+  const [docType, setDocType]     = useState<DocType>("link");
+  const [docUrl, setDocUrl]       = useState("");
+  const [docContent, setDocContent] = useState("");
+  const [docStage, setDocStage]   = useState("");
+  const [docWs, setDocWs]         = useState("");
+  const [docNotes, setDocNotes]   = useState("");
 
   useEffect(() => { setT(getTarget(id)); }, [id]);
 
@@ -180,6 +252,36 @@ export default function CRMDetailPage() {
     const updated = { ...t, contacts: t.contacts.filter(c => c.id !== cpId) };
     setT(updated);
     saveTarget(updated);
+  }
+
+  function addDocument() {
+    if (!docTitle.trim() || !t) return;
+    const doc: CRMDocument = {
+      id: crypto.randomUUID(), title: docTitle.trim(), type: docType,
+      url: docUrl.trim() || undefined, content: docContent.trim() || undefined,
+      stage: (docStage as CRMDocument["stage"]) || undefined,
+      workstreamId: docWs || undefined, notes: docNotes.trim() || undefined,
+      addedAt: new Date().toISOString(),
+    };
+    const updated = { ...t, documents: [doc, ...(t.documents ?? [])] };
+    setT(updated);
+    saveTarget(updated);
+    setDocTitle(""); setDocUrl(""); setDocContent(""); setDocStage("");
+    setDocWs(""); setDocNotes(""); setShowAddDoc(false);
+  }
+
+  function removeDocument(docId: string) {
+    if (!t) return;
+    const updated = { ...t, documents: (t.documents ?? []).filter(d => d.id !== docId) };
+    setT(updated);
+    saveTarget(updated);
+  }
+
+  function pushAsTemplate() {
+    if (!t) return;
+    const tasks = stageTasks.map(ct => ({ workstreamId: ct.workstreamId, title: ct.title, description: ct.description }));
+    saveCustomTemplate(t.stage, tasks);
+    alert(`✅ ${stageMeta.label} stage tasks set as platform default for all new targets.`);
   }
 
   if (!t) return null;
@@ -270,7 +372,7 @@ export default function CRMDetailPage() {
         {/* Tabs */}
         <div className="px-8 bg-white border-b border-[#E5E7EB] shrink-0">
           <div className="flex gap-0">
-            {(["overview","checklist","contacts","timeline"] as const).map(tb => (
+            {(["overview","checklist","documents","contacts","timeline"] as const).map(tb => (
               <button key={tb} onClick={() => setTab(tb)}
                 className={`px-4 py-3 text-xs font-medium capitalize border-b-2 transition-colors flex items-center gap-1.5 ${
                   tab === tb ? "border-[#FF6400] text-[#FF6400]" : "border-transparent text-[#6B7280] hover:text-[#374151]"
@@ -279,6 +381,7 @@ export default function CRMDetailPage() {
                   <span className="w-1.5 h-1.5 rounded-full bg-[#FF6400] shrink-0" />
                 )}
                 {tb === "checklist" ? `Checklist (${stageTasksDone}/${stageTasksTotal})`
+                  : tb === "documents" ? `Documents (${(t.documents ?? []).length})`
                   : tb === "contacts" ? `Contacts (${t.contacts.length})`
                   : tb === "timeline" ? `Timeline (${t.contactLog.length})`
                   : "Overview"}
@@ -287,7 +390,8 @@ export default function CRMDetailPage() {
           </div>
         </div>
 
-        {/* Content */}
+        {/* Content + AI sidebar */}
+        <div className="flex-1 flex overflow-hidden">
         <div className="flex-1 overflow-y-auto px-8 py-8">
 
           {/* ── Checklist ── */}
@@ -298,13 +402,19 @@ export default function CRMDetailPage() {
                 <div>
                   <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-1">{stageMeta.label} stage</p>
                   <h2 className="text-xl font-light text-[#242C2D]">Department evaluation tasks</h2>
-                  <p className="text-xs text-[#9CA3AF] mt-1">All departments must complete their tasks before the stage can advance.</p>
+                  <p className="text-xs text-[#9CA3AF] mt-1">All departments must complete their tasks before advancing.</p>
                 </div>
-                <div className="text-right">
-                  <p className="text-2xl font-light tabular-nums" style={{ color: allDone ? "#9AC183" : "#FF6400" }}>
-                    {stageTasksDone}/{stageTasksTotal}
-                  </p>
-                  <p className="text-[10px] font-mono text-[#9CA3AF]">tasks done</p>
+                <div className="flex items-center gap-3">
+                  <button onClick={pushAsTemplate}
+                    className="flex items-center gap-1.5 text-[11px] font-mono text-[#9CA3AF] border border-[#E5E7EB] px-3 py-1.5 rounded-lg hover:border-[#FF6400]/30 hover:text-[#FF6400] transition-colors">
+                    ↑ Set as platform default
+                  </button>
+                  <div className="text-right">
+                    <p className="text-2xl font-light tabular-nums" style={{ color: allDone ? "#9AC183" : "#FF6400" }}>
+                      {stageTasksDone}/{stageTasksTotal}
+                    </p>
+                    <p className="text-[10px] font-mono text-[#9CA3AF]">tasks done</p>
+                  </div>
                 </div>
               </div>
 
@@ -349,9 +459,9 @@ export default function CRMDetailPage() {
                         {/* Tasks */}
                         <div className="divide-y divide-[#F3F4F6]">
                           {tasks.map(ct => (
-                            <div key={ct.id}
-                              className="px-4 py-3 flex items-start gap-3 hover:bg-[#FAFAFA] transition-colors cursor-pointer group"
-                              onClick={() => {
+                            <div key={ct.id} className="px-4 py-3 flex items-start gap-3 hover:bg-[#FAFAFA] transition-colors group/task">
+                              {/* Toggle checkbox */}
+                              <button onClick={() => {
                                 const updated: TargetCompany = {
                                   ...t,
                                   crmTasks: t.crmTasks.map(x =>
@@ -362,15 +472,28 @@ export default function CRMDetailPage() {
                                 };
                                 setT(updated);
                                 saveTarget(updated);
-                              }}>
-                              {ct.completed
-                                ? <CheckCircle2 size={16} className="shrink-0 mt-0.5 text-[#9AC183]" />
-                                : <Circle size={16} className="shrink-0 mt-0.5 text-[#D1D5DB] group-hover:text-[#FF6400] transition-colors" />
-                              }
+                              }} className="shrink-0 mt-0.5">
+                                {ct.completed
+                                  ? <CheckCircle2 size={16} className="text-[#9AC183]" />
+                                  : <Circle size={16} className="text-[#D1D5DB] group-hover/task:text-[#FF6400] transition-colors" />
+                                }
+                              </button>
+                              {/* Content */}
                               <div className="flex-1 min-w-0">
                                 <p className={`text-sm ${ct.completed ? "line-through text-[#9CA3AF]" : "text-[#242C2D]"}`}>{ct.title}</p>
                                 <p className="text-[11px] text-[#9CA3AF] mt-0.5 leading-relaxed">{ct.description}</p>
                               </div>
+                              {/* Sparkle button — work with AI */}
+                              <button
+                                onClick={() => setActiveCrmTask(activeCrmTask?.id === ct.id ? null : ct)}
+                                className={`shrink-0 mt-0.5 p-1 rounded-lg transition-all ${
+                                  activeCrmTask?.id === ct.id
+                                    ? "bg-[#FFEFE5] text-[#FF6400]"
+                                    : "text-[#D1D5DB] opacity-0 group-hover/task:opacity-100 hover:bg-[#FFEFE5] hover:text-[#FF6400]"
+                                }`}
+                                title="Work on this with AI">
+                                <Sparkles size={13} />
+                              </button>
                             </div>
                           ))}
                         </div>
@@ -671,7 +794,104 @@ export default function CRMDetailPage() {
               )}
             </div>
           )}
-        </div>
+
+          {/* ── Documents ── */}
+          {tab === "documents" && (
+            <div className="max-w-3xl">
+              {/* Add document form */}
+              {showAddDoc ? (
+                <div className="bg-white border border-[#E5E7EB] rounded-xl p-5 mb-6 space-y-4">
+                  <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF]">Add document</p>
+                  <div className="grid grid-cols-2 gap-3">
+                    <input value={docTitle} onChange={e => setDocTitle(e.target.value)} placeholder="Title *"
+                      className="col-span-2 border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#FF6400]/40 placeholder:text-[#D1D5DB]" />
+                  </div>
+                  {/* Type selector */}
+                  <div className="flex flex-wrap gap-2">
+                    {(["link","note","pdf","excel","word","presentation","contract","financial","other"] as DocType[]).map(tp => (
+                      <button key={tp} type="button" onClick={() => setDocType(tp)}
+                        className={`px-3 py-1.5 rounded-full text-xs font-medium border capitalize transition-colors ${
+                          docType === tp ? "bg-[#242C2D] text-white border-[#242C2D]" : "border-[#E5E7EB] text-[#6B7280] hover:border-[#374151]/30"
+                        }`}>
+                        {DOC_ICONS[tp]} {tp}
+                      </button>
+                    ))}
+                  </div>
+                  {docType === "link" && (
+                    <input value={docUrl} onChange={e => setDocUrl(e.target.value)} placeholder="URL (Google Drive, SharePoint, Dropbox…)"
+                      className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#FF6400]/40 placeholder:text-[#D1D5DB]" />
+                  )}
+                  {docType === "note" && (
+                    <textarea value={docContent} onChange={e => setDocContent(e.target.value)} rows={5}
+                      placeholder="Paste or type note content…"
+                      className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-2 text-sm focus:outline-none focus:border-[#FF6400]/40 resize-none placeholder:text-[#D1D5DB]" />
+                  )}
+                  {docType !== "note" && docType !== "link" && (
+                    <input value={docUrl} onChange={e => setDocUrl(e.target.value)} placeholder="URL or file path (optional)"
+                      className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#FF6400]/40 placeholder:text-[#D1D5DB]" />
+                  )}
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] block mb-1">Stage context</label>
+                      <select value={docStage} onChange={e => setDocStage(e.target.value)}
+                        className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-[#FF6400]/40">
+                        <option value="">Any</option>
+                        {STAGES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] block mb-1">Department</label>
+                      <select value={docWs} onChange={e => setDocWs(e.target.value)}
+                        className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-sm bg-white focus:outline-none focus:border-[#FF6400]/40">
+                        <option value="">Any</option>
+                        {Object.entries(CRM_DEPTS).map(([id, d]) => <option key={id} value={id}>{d.icon} {d.name}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                  <textarea value={docNotes} onChange={e => setDocNotes(e.target.value)} rows={2}
+                    placeholder="Internal notes (optional)"
+                    className="w-full border border-[#E5E7EB] rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:border-[#FF6400]/40 resize-none placeholder:text-[#D1D5DB]" />
+                  <div className="flex gap-2">
+                    <button onClick={addDocument} className="flex-1 sf-gradient text-white text-xs font-medium py-2 rounded-lg hover:opacity-90">Add document</button>
+                    <button onClick={() => setShowAddDoc(false)} className="px-3 py-2 border border-[#E5E7EB] rounded-lg text-xs text-[#6B7280] hover:bg-[#F9FAFB]">Cancel</button>
+                  </div>
+                </div>
+              ) : (
+                <button onClick={() => setShowAddDoc(true)}
+                  className="w-full border border-dashed border-[#E5E7EB] rounded-xl py-3 flex items-center justify-center gap-2 text-xs text-[#9CA3AF] hover:border-[#FF6400]/30 hover:text-[#FF6400] transition-colors mb-6">
+                  <Plus size={12} /> Add document or link
+                </button>
+              )}
+
+              {/* Document list */}
+              {(t.documents ?? []).length === 0 ? (
+                <div className="bg-white border border-dashed border-[#E5E7EB] rounded-xl p-10 text-center">
+                  <UploadCloud size={24} className="text-[#D1D5DB] mx-auto mb-3" />
+                  <p className="text-sm text-[#9CA3AF]">No documents yet.</p>
+                  <p className="text-[11px] text-[#D1D5DB] mt-1">Add links, notes, or references to due diligence materials.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {(t.documents ?? []).map(doc => (
+                    <DocRow key={doc.id} doc={doc} onRemove={() => removeDocument(doc.id)} />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+        </div>{/* end scrollable content */}
+
+        {/* CRM Task AI sidebar */}
+        {activeCrmTask && (
+          <CRMTaskAISidebar
+            key={activeCrmTask.id}
+            task={activeCrmTask}
+            company={t}
+            onClose={() => setActiveCrmTask(null)}
+          />
+        )}
+        </div>{/* end flex content+sidebar */}
       </div>
     </div>
   );

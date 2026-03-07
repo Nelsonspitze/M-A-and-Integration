@@ -29,6 +29,20 @@ export interface ContactEntry {
   summary: string;
 }
 
+export type DocType = "link" | "note" | "pdf" | "excel" | "word" | "presentation" | "contract" | "financial" | "other";
+
+export interface CRMDocument {
+  id: string;
+  title: string;
+  type: DocType;
+  url?: string;         // external link (Google Drive, SharePoint, etc.)
+  content?: string;     // pasted/typed text for "note" type
+  stage?: CRMStage;     // which stage it relates to
+  workstreamId?: string;// which department
+  notes?: string;       // internal comment
+  addedAt: string;
+}
+
 export interface CRMTask {
   id: string;
   stage: CRMStage;
@@ -62,6 +76,9 @@ export interface TargetCompany {
 
   // Stage evaluation tasks
   crmTasks: CRMTask[];
+
+  // Document store
+  documents: CRMDocument[];
 
   // People & log
   contacts: ContactPerson[];

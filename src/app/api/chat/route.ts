@@ -5,7 +5,62 @@ import { INTEGRATION_STRATEGIES } from "@/lib/pmi/library";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 export async function POST(req: NextRequest) {
-  const { messages, item, deal, wsStrategy, task } = await req.json();
+  const { messages, item, deal, wsStrategy, task, crmContext } = await req.json();
+
+  // ── CRM Task mode ──────────────────────────────────────────────────────────
+  if (crmContext) {
+    const { company, crmTask, deptName } = crmContext;
+    const system = `You are an expert M&A advisor and due diligence specialist embedded in twinrope, a private equity M&A and integration platform.
+
+You are helping evaluate an acquisition target. Here is the full context:
+
+## Target Company
+- Name: ${company.name}
+- Sector: ${company.sector}
+- Country: ${company.country ?? "—"}
+- EBITDA estimate: ${company.ebitdaEst ? `€${company.ebitdaEst}k` : "not specified"}
+- Headcount (FTE): ${company.fte ?? "not specified"}
+- Pipeline stage: ${company.stage}
+- Integration strategy fit: ${company.strategyFit}
+- Geography fit: ${company.geographyFit}
+- Professionalization level: ${company.professionalization}/5
+${company.description ? `- Description: ${company.description}` : ""}
+
+## Current Evaluation Task — ${deptName}
+**${crmTask.title}**
+
+${crmTask.description}
+
+## Your role
+- Be a practical M&A advisor, not a consultant writing a report
+- Give specific, actionable guidance for this task and company
+- Flag red flags, key questions, and deal breakers where relevant
+- When creating checklists or information requests, use bullet points (- item)
+- Keep responses focused and concise`;
+
+    if (!process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_API_KEY === "your_api_key_here") {
+      return new Response("ANTHROPIC_API_KEY is not configured.", { status: 500 });
+    }
+    try {
+      const stream = client.messages.stream({ model: "claude-sonnet-4-6", max_tokens: 1500, system, messages });
+      const readable = new ReadableStream({
+        async start(controller) {
+          try {
+            for await (const event of stream) {
+              if (event.type === "content_block_delta" && event.delta.type === "text_delta") {
+                controller.enqueue(new TextEncoder().encode(event.delta.text));
+              }
+            }
+          } catch (err) {
+            controller.enqueue(new TextEncoder().encode(`\n\n[Error: ${err instanceof Error ? err.message : "Unknown error"}]`));
+          } finally { controller.close(); }
+        },
+      });
+      return new Response(readable, { headers: { "Content-Type": "text/plain; charset=utf-8" } });
+    } catch (err) {
+      return new Response(err instanceof Error ? err.message : "Unknown error", { status: 500 });
+    }
+  }
 
   const strategyLabel = INTEGRATION_STRATEGIES.find(s => s.value === wsStrategy)?.label ?? wsStrategy;
   const overallLabel  = INTEGRATION_STRATEGIES.find(s => s.value === deal.overallStrategy)?.label ?? deal.overallStrategy;
