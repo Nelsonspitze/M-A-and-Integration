@@ -97,7 +97,7 @@
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  html { @apply font-sans; }
+  html, body { @apply font-sans; }
 }
 
 /* Orange gradient — primary CTAs */
