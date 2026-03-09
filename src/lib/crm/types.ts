@@ -20,6 +20,7 @@ export interface ContactPerson {
   role: string;
   email?: string;
   phone?: string;
+  linkedUserId?: string; // id of the AppUser this contact is linked to (platform account)
 }
 
 export interface ContactEntry {
@@ -31,16 +32,24 @@ export interface ContactEntry {
 
 export type DocType = "link" | "note" | "pdf" | "excel" | "word" | "presentation" | "contract" | "financial" | "other";
 
+export type DocClassification =
+  | "public"             // Shareable outside deal room
+  | "deal-confidential"  // All invited participants
+  | "restricted"         // buyer:c-level and above only
+  | "highly-restricted"; // buyer:ma-admin + orgSensitivity only
+
 export interface CRMDocument {
   id: string;
   title: string;
   type: DocType;
-  url?: string;         // external link (Google Drive, SharePoint, etc.)
-  content?: string;     // pasted/typed text for "note" type
-  stage?: CRMStage;     // which stage it relates to
-  workstreamId?: string;// which department
-  notes?: string;       // internal comment
+  classification?: DocClassification; // access control tier (default: deal-confidential)
+  url?: string;          // external link (Google Drive, SharePoint, etc.)
+  content?: string;      // pasted/typed text for "note" type
+  stage?: CRMStage;      // which stage it relates to
+  workstreamId?: string; // which department
+  notes?: string;        // internal comment
   addedAt: string;
+  uploadedByParty?: "buyer" | "seller" | "advisor"; // who added it
 }
 
 export interface CRMTaskNote {

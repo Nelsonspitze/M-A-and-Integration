@@ -1,4 +1,6 @@
 import { IntegrationStrategy } from "./pmi/library";
+import type { DealParticipant } from "./access/types";
+export type { DealParticipant };
 
 export interface TeamMember {
   id: string;
@@ -43,6 +45,7 @@ export interface Deal {
   createdAt: string;
   planStatus?: "planning" | "active"; // "planning" = M&A wizard in progress
   crmTargetId?: string;               // source CRM target, if converted
+  participants?: DealParticipant[];   // per-deal access control
 }
 
 const STORAGE_KEY = "pmi_deals";
@@ -73,6 +76,7 @@ export function createDeal(data: Omit<Deal, "id" | "createdAt" | "tasks" | "acti
     createdAt: new Date().toISOString(),
     tasks: [], actionPlans: {}, workstreamConfigs: [], team: [],
     planStatus: "planning",
+    participants: [],
   };
   saveDeal(deal);
   return deal;

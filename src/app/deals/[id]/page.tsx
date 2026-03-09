@@ -8,7 +8,7 @@ import { INTEGRATION_STRATEGIES, IntegrationStrategy, PMI_LIBRARY } from "@/lib/
 import { Sidebar } from "@/components/sidebar";
 import { ArrowRight, Sparkles, AlertTriangle, Plus, X, MapPin } from "lucide-react";
 import Link from "next/link";
-import { getUser, canSeePlanning, canSeeScoreboard, canSeeAllWorkstreams, canSeeWorkstream } from "@/lib/auth";
+import { getUser, resolvePermissions, canSeeWorkstream } from "@/lib/auth";
 import { getPlan } from "@/lib/pmi/plan";
 
 const wsColors: Record<string, { dot: string; light: string }> = {
@@ -76,17 +76,18 @@ export default function DealPage() {
   if (!deal || !score) return null;
 
   const user              = getUser();
+  const perms             = resolvePermissions(user);
   const plan              = getPlan(deal.id);
   const isPlanning        = deal.planStatus === "planning";
-  const showScoreboard    = canSeeScoreboard(user);
-  const showAllWorkstreams = canSeeAllWorkstreams(user);
+  const showScoreboard    = perms.canViewScoreboard;
+  const showAllWorkstreams = perms.workstreamAll;
 
   const progress = getDealProgress(deal);
   const days = Math.max(0, Math.floor((Date.now() - new Date(deal.closeDate).getTime()) / 86400000));
   const strategy = INTEGRATION_STRATEGIES.find(s => s.value === deal.overallStrategy);
   const allActiveWorkstreams = PMI_LIBRARY.filter(ws => strategy?.activeWorkstreams.includes(ws.id));
   // Role-filtered workstreams
-  const activeWorkstreams = allActiveWorkstreams.filter(ws => canSeeWorkstream(user, ws.id));
+  const activeWorkstreams = allActiveWorkstreams.filter(ws => canSeeWorkstream(perms, ws.id, user.deptId));
   const atRisk = activeWorkstreams.filter(ws => {
     const p = getWsProgress(deal, ws.id);
     return p !== null && p < 40;
@@ -120,7 +121,7 @@ export default function DealPage() {
         <div className="max-w-4xl mx-auto px-8 pt-12 pb-20">
 
           {/* Planning banner — M&A/C-level only */}
-          {isPlanning && canSeePlanning(user) && (
+          {isPlanning && perms.planningWizard !== "none" && (
             <div className="bg-[#FFF7ED] border border-[#FF6400]/30 rounded-xl p-4 mb-6 flex items-center gap-3">
               <MapPin size={16} className="text-[#FF6400] shrink-0" />
               <div className="flex-1">
@@ -136,7 +137,7 @@ export default function DealPage() {
           )}
 
           {/* Dept/team-member: planning in progress placeholder */}
-          {isPlanning && !canSeePlanning(user) && (
+          {isPlanning && perms.planningWizard === "none" && (
             <div className="bg-white border border-[#E5E7EB] rounded-2xl p-16 text-center">
               <div className="w-12 h-12 rounded-2xl bg-[#F3F4F6] flex items-center justify-center mx-auto mb-4">
                 <MapPin size={20} className="text-[#9CA3AF]" />
@@ -149,7 +150,7 @@ export default function DealPage() {
           )}
 
           {/* Deal header */}
-          {(!isPlanning || canSeePlanning(user)) && <div className="mb-8">
+          {(!isPlanning || perms.planningWizard !== "none") && <div className="mb-8">
             <p className="text-[11px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-3">Integration</p>
             <h1 className="text-4xl font-light text-[#242C2D] heading-tight mb-1">{deal.name}</h1>
             <div className="flex items-center gap-3 mt-2">

@@ -6,7 +6,7 @@ import { Deal, getDeal, saveDeal, Task, WorkstreamConfig } from "@/lib/store";
 import { INTEGRATION_STRATEGIES, IntegrationStrategy, PMI_LIBRARY, IntegrationItem } from "@/lib/pmi/library";
 import { Sidebar } from "@/components/sidebar";
 import { AISidebar, TaskAISidebar, TeamAvatar, UnassignedAvatar } from "@/components/ai-sidebar";
-import { Sparkles, CheckCircle2, Circle, AlertTriangle, ChevronDown, ChevronUp, Plus, X, ArrowLeft } from "lucide-react";
+import { Sparkles, CheckCircle2, Circle, AlertTriangle, ChevronDown, ChevronUp, Plus, X, ArrowLeft, Pencil, Trash2, Check } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import Link from "next/link";
 
@@ -45,6 +45,8 @@ function ItemCard({ item, deal, workstreamId, wsName, onUpdate, onOpenAI, onOpen
   const [generating, setGenerating] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
   const [newTask, setNewTask] = useState({ title: "", assigneeId: "", dueDate: "" });
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState({ title: "", assigneeId: "", dueDate: "" });
 
   const tasks = deal.tasks.filter(t => t.itemId === item.id);
   const plan = deal.actionPlans[item.id];
@@ -67,6 +69,23 @@ function ItemCard({ item, deal, workstreamId, wsName, onUpdate, onOpenAI, onOpen
 
   function toggleTask(id: string) {
     const updated = { ...deal, tasks: deal.tasks.map(t => t.id === id ? { ...t, completed: !t.completed } : t) };
+    saveDeal(updated); onUpdate(updated);
+  }
+
+  function startEdit(task: Task) {
+    setEditingTaskId(task.id);
+    setEditValues({ title: task.title, assigneeId: task.assigneeId ?? "", dueDate: task.dueDate ?? "" });
+  }
+
+  function saveEdit(taskId: string) {
+    if (!editValues.title.trim()) return;
+    const updated = { ...deal, tasks: deal.tasks.map(t => t.id === taskId ? { ...t, ...editValues } : t) };
+    saveDeal(updated); onUpdate(updated);
+    setEditingTaskId(null);
+  }
+
+  function deleteTask(taskId: string) {
+    const updated = { ...deal, tasks: deal.tasks.filter(t => t.id !== taskId) };
     saveDeal(updated); onUpdate(updated);
   }
 
@@ -221,6 +240,55 @@ function ItemCard({ item, deal, workstreamId, wsName, onUpdate, onOpenAI, onOpen
                         const member = (deal.team ?? []).find(m => m.id === task.assigneeId);
                         const isDept = task.assigneeId?.startsWith("dept:");
                         const isOverdue = !task.completed && task.dueDate && task.dueDate < new Date().toISOString().split("T")[0];
+
+                        if (editingTaskId === task.id) {
+                          return (
+                            <div key={task.id} className="mt-1 p-3 bg-[#FAFAFA] rounded-xl border border-[#E5E7EB] space-y-2">
+                              <Input
+                                value={editValues.title}
+                                onChange={e => setEditValues({ ...editValues, title: e.target.value })}
+                                onKeyDown={e => { if (e.key === "Enter") saveEdit(task.id); if (e.key === "Escape") setEditingTaskId(null); }}
+                                className="h-8 text-xs rounded-lg border-[#E5E7EB]"
+                                autoFocus
+                              />
+                              <div className="grid grid-cols-2 gap-2">
+                                <select
+                                  value={editValues.assigneeId}
+                                  onChange={e => setEditValues({ ...editValues, assigneeId: e.target.value })}
+                                  className="h-8 text-xs rounded-lg border border-[#E5E7EB] bg-white px-2 text-[#374151]">
+                                  <option value="">Unassigned</option>
+                                  <optgroup label="Department">
+                                    <option value={`dept:${workstreamId}`}>{wsName} Team</option>
+                                  </optgroup>
+                                  {(deal.team ?? []).length > 0 && (
+                                    <optgroup label="People">
+                                      {(deal.team ?? []).map(m => (
+                                        <option key={m.id} value={m.id}>{m.name}</option>
+                                      ))}
+                                    </optgroup>
+                                  )}
+                                </select>
+                                <Input
+                                  type="date"
+                                  value={editValues.dueDate}
+                                  onChange={e => setEditValues({ ...editValues, dueDate: e.target.value })}
+                                  className="h-8 text-xs rounded-lg border-[#E5E7EB]"
+                                />
+                              </div>
+                              <div className="flex gap-2">
+                                <button onClick={() => saveEdit(task.id)}
+                                  className="flex items-center gap-1 text-xs font-medium px-3 py-1.5 rounded-lg bg-[#242C2D] text-white hover:opacity-90 transition-opacity">
+                                  <Check size={10} /> Save
+                                </button>
+                                <button onClick={() => setEditingTaskId(null)}
+                                  className="text-xs text-[#9CA3AF] hover:text-[#374151] px-2 py-1.5 transition-colors">
+                                  Cancel
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        }
+
                         return (
                           <div key={task.id} className="flex items-center gap-1 group/task">
                             <button onClick={() => toggleTask(task.id)}
@@ -240,10 +308,22 @@ function ItemCard({ item, deal, workstreamId, wsName, onUpdate, onOpenAI, onOpen
                               ) : null}
                             </button>
                             <button
+                              onClick={() => startEdit(task)}
+                              title="Edit task"
+                              className="opacity-0 group-hover/task:opacity-100 shrink-0 p-1.5 rounded-lg text-[#9CA3AF] hover:bg-[#FAFAFA] hover:text-[#374151] transition-all">
+                              <Pencil size={11} />
+                            </button>
+                            <button
                               onClick={() => onOpenTaskAI(task.id)}
                               title="Ask AI about this task"
                               className="opacity-0 group-hover/task:opacity-100 shrink-0 p-1.5 rounded-lg text-[#CDADFC] hover:bg-[#F5F0FE] transition-all">
                               <Sparkles size={11} />
+                            </button>
+                            <button
+                              onClick={() => deleteTask(task.id)}
+                              title="Delete task"
+                              className="opacity-0 group-hover/task:opacity-100 shrink-0 p-1.5 rounded-lg text-[#9CA3AF] hover:bg-[#FFEFE5] hover:text-[#FF6400] transition-all">
+                              <Trash2 size={11} />
                             </button>
                           </div>
                         );

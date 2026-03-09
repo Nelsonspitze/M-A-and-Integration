@@ -3,40 +3,22 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { Deal, getDeals } from "@/lib/store";
-import { getUser, AppUser, canSeeCRM, canCreateIntegration, canSeeAllWorkstreams, ROLE_LABELS } from "@/lib/auth";
-import { LayoutDashboard, Plus, Settings, Users, Target, MapPin } from "lucide-react";
+import { getUser, AppUser, resolvePermissions, ROLE_LABELS } from "@/lib/auth";
+import { LayoutDashboard, Settings, Users, Target, Layers, TrendingUp, FolderOpen } from "lucide-react";
 
-function getDealProgress(deal: Deal) {
-  if (!deal.tasks.length) return 0;
-  return Math.round((deal.tasks.filter(t => t.completed).length / deal.tasks.length) * 100);
-}
-
-const strategyDot: Record<string, string> = {
-  full: "#FF6400", partial: "#74A0F4", "bolt-on": "#FCDCA0", standalone: "#C7CFDC",
+const partyBadge: Record<string, { label: string; color: string }> = {
+  buyer:   { label: "Buyer",   color: "#FF6400" },
+  seller:  { label: "Seller",  color: "#74A0F4" },
+  advisor: { label: "Advisor", color: "#9AC183" },
 };
 
 export function Sidebar() {
   const pathname = usePathname();
-  const [deals, setDeals]   = useState<Deal[]>([]);
-  const [user, setUser]     = useState<AppUser | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
 
   useEffect(() => {
-    const u = getUser();
-    setUser(u);
-    const allDeals = getDeals();
-    // Dept-lead/team-member: only show deals where they have tasks
-    const visible = canSeeAllWorkstreams(u)
-      ? allDeals
-      : allDeals.filter(d => d.tasks.some(t => t.workstreamId === u.deptId));
-    setDeals(visible);
-
-    const refresh = () => {
-      const latest = getUser();
-      setUser(latest);
-      const all = getDeals();
-      setDeals(canSeeAllWorkstreams(latest) ? all : all.filter(d => d.tasks.some(t => t.workstreamId === latest.deptId)));
-    };
+    setUser(getUser());
+    const refresh = () => setUser(getUser());
     window.addEventListener("storage", refresh);
     window.addEventListener("user-change", refresh);
     return () => {
@@ -52,22 +34,25 @@ export function Sidebar() {
 
   if (!user) return null;
 
-  const showCRM     = canSeeCRM(user);
-  const showNewBtn  = canCreateIntegration(user);
+  const perms = resolvePermissions(user);
+  const badge = partyBadge[user.partyType] ?? partyBadge.buyer;
 
   const navItems = [
-    { href: "/",         label: "Dashboard", icon: LayoutDashboard, always: true },
-    { href: "/crm",      label: "Pipeline",  icon: Target,          always: false, gate: showCRM },
-    { href: "/team",     label: "Team",      icon: Users,           always: true },
-    { href: "/settings", label: "Settings",  icon: Settings,        always: true },
-  ].filter(item => item.always || item.gate);
+    { href: "/",                label: "Dashboard",       icon: LayoutDashboard, show: true },
+    { href: "/crm",             label: "Pipeline",        icon: Target,          show: perms.pipeline !== "none" },
+    { href: "/implementations", label: "Integrations",    icon: Layers,          show: perms.workstreams !== "none" },
+    { href: "/synergies",       label: "Synergies",       icon: TrendingUp,      show: perms.synergies !== "none" },
+    { href: "/dataroom",        label: "Dataroom",        icon: FolderOpen,      show: perms.vdr !== "none" || perms.dataroom !== "none" },
+    { href: "/team",            label: "Team",            icon: Users,           show: true },
+    { href: "/settings",        label: "Settings",        icon: Settings,        show: true },
+  ].filter(item => item.show);
 
   return (
     <aside className="w-[220px] shrink-0 h-screen sticky top-0 bg-white border-r border-[#E5E7EB] flex flex-col">
 
       {/* Logo */}
       <div className="px-5 pt-6 pb-5">
-        <div className="flex items-center gap-2.5">
+        <Link href="/" className="flex items-center gap-2.5 hover:opacity-80 transition-opacity">
           <svg width="34" height="22" viewBox="0 0 34 22" fill="none" className="shrink-0">
             <defs>
               <linearGradient id="tr" x1="0" y1="0" x2="34" y2="22" gradientUnits="userSpaceOnUse">
@@ -82,19 +67,9 @@ export function Sidebar() {
             <p className="text-sm font-semibold text-[#242C2D] leading-tight tracking-tight">twinrope</p>
             <p className="text-[9px] font-mono text-[#9CA3AF] tracking-widest uppercase">M&A · Integration · Growth</p>
           </div>
-        </div>
+        </Link>
       </div>
 
-      {/* CTA */}
-      {showNewBtn && (
-        <div className="px-4 pb-4">
-          <Link href="/deals/new">
-            <button className="w-full sf-gradient text-white text-xs font-medium py-2.5 rounded-xl flex items-center justify-center gap-2 hover:opacity-90 transition-opacity">
-              <Plus size={13} /> New Integration
-            </button>
-          </Link>
-        </div>
-      )}
 
       {/* Nav */}
       <nav className="px-3 space-y-0.5">
@@ -111,42 +86,6 @@ export function Sidebar() {
         ))}
       </nav>
 
-      {/* Integrations */}
-      {deals.length > 0 && (
-        <div className="mt-5 px-3 flex-1 overflow-y-auto">
-          <p className="px-3 text-[10px] font-mono uppercase tracking-widest text-[#9CA3AF] mb-2">
-            {canSeeAllWorkstreams(user) ? "Integrations" : "My workstreams"}
-          </p>
-          <div className="space-y-0.5">
-            {deals.map(deal => {
-              const progress = getDealProgress(deal);
-              const active   = pathname.startsWith(`/deals/${deal.id}`);
-              const isPlan   = deal.planStatus === "planning";
-              const href     = canSeeAllWorkstreams(user)
-                ? (isPlan ? `/deals/${deal.id}/plan` : `/deals/${deal.id}`)
-                : `/deals/${deal.id}/workstreams/${user.deptId}`;
-              return (
-                <Link key={deal.id} href={href}
-                  className={`block px-3 py-2 rounded-xl transition-colors ${active ? "bg-[#FFEFE5]" : "hover:bg-[#F9FAFB]"}`}>
-                  <div className="flex items-center gap-2">
-                    {isPlan
-                      ? <MapPin size={8} className="text-[#FF6400] shrink-0" />
-                      : <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: strategyDot[deal.overallStrategy] }} />
-                    }
-                    <span className={`text-xs flex-1 truncate ${active ? "text-[#FF6400] font-medium" : "text-[#374151]"}`}>
-                      {deal.addOnCompany}
-                    </span>
-                    {isPlan
-                      ? <span className="text-[9px] font-mono text-[#FF6400]">plan</span>
-                      : <span className="text-[10px] font-mono text-[#9CA3AF]">{progress}%</span>
-                    }
-                  </div>
-                </Link>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Current user */}
       <div className="mt-auto px-4 py-4 border-t border-[#E5E7EB]">
@@ -154,9 +93,17 @@ export function Sidebar() {
           <div className="w-7 h-7 rounded-full bg-[#242C2D] flex items-center justify-center shrink-0">
             <span className="text-[10px] font-medium text-white">{user.name.split(" ").map(n => n[0]).join("").slice(0,2)}</span>
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="text-xs font-medium text-[#242C2D] truncate">{user.name}</p>
-            <p className="text-[9px] font-mono text-[#9CA3AF] uppercase tracking-wider">{ROLE_LABELS[user.role]}</p>
+            <div className="flex items-center gap-1.5 mt-0.5">
+              <span className="text-[9px] font-mono text-[#9CA3AF] uppercase tracking-wider truncate">
+                {ROLE_LABELS[user.role]}
+              </span>
+              <span className="text-[8px] font-mono px-1 py-px rounded shrink-0"
+                style={{ backgroundColor: `${badge.color}20`, color: badge.color }}>
+                {badge.label}
+              </span>
+            </div>
           </div>
         </Link>
       </div>

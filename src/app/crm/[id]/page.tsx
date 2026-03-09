@@ -9,10 +9,12 @@ import { getTarget, saveTarget, deleteTarget, advanceStage, nextStage, STAGES, s
 import { CRM_DEPTS, saveCustomTemplate } from "@/lib/crm/stage-tasks";
 import { CRMTaskPanel } from "@/components/crm-task-panel";
 import { IntegrationStrategy, INTEGRATION_STRATEGIES } from "@/lib/pmi/library";
-import { createDeal } from "@/lib/store";
+import { createDeal, getDeals } from "@/lib/store";
+import { getAllUsers, saveAllUsers, getParties, saveParties, getUser, resolvePermissions } from "@/lib/auth";
+import type { AppUser, AppParty } from "@/lib/auth";
 import {
   ChevronLeft, Trash2, Plus, X, ExternalLink, Upload,
-  Phone, Mail, Users, FileText, Check, CheckCircle2, Circle, AlertTriangle, Lock, Sparkles, UploadCloud, ShieldCheck,
+  Phone, Mail, Users, FileText, Check, CheckCircle2, Circle, AlertTriangle, Lock, Sparkles, UploadCloud, ShieldCheck, FolderOpen, UserPlus, LinkIcon,
 } from "lucide-react";
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -184,6 +186,9 @@ export default function CRMDetailPage() {
   const [cpRole, setCpRole]   = useState("");
   const [cpEmail, setCpEmail] = useState("");
 
+  // Platform users (for contact linking)
+  const [platformUsers, setPlatformUsers] = useState<AppUser[]>([]);
+
   // Document form
   const [showAddDoc, setShowAddDoc] = useState(false);
   const [docTitle, setDocTitle]   = useState("");
@@ -194,7 +199,20 @@ export default function CRMDetailPage() {
   const [docWs, setDocWs]         = useState("");
   const [docNotes, setDocNotes]   = useState("");
 
-  useEffect(() => { setT(getTarget(id)); }, [id]);
+  const linkedDeal = t ? getDeals().find(d => d.crmTargetId === t.id) ?? null : null;
+
+  const currentUser = getUser();
+  const currentPerms = resolvePermissions(currentUser);
+
+  useEffect(() => {
+    // Redirect users without pipeline access
+    if (currentPerms.pipeline === "none") {
+      router.replace("/");
+      return;
+    }
+    setT(getTarget(id));
+    setPlatformUsers(getAllUsers());
+  }, [id]);
 
   function update(patch: Partial<TargetCompany>) {
     if (!t) return;
@@ -219,9 +237,11 @@ export default function CRMDetailPage() {
     setDirty(false);
   }
 
-  function handleConvertToIntegration() {
+  function handleStartIntegration() {
     if (!t) return;
-    if (!confirm(`Convert ${t.name} to an active integration? This will create a new deal in the planning wizard.`)) return;
+    const isClosed = t.stage === "closed";
+    const label = isClosed ? "Convert to active integration" : "Start integration planning";
+    if (!confirm(`${label} for ${t.name}? You can continue working on the deal in parallel.`)) return;
     const strategyValue = (t.strategyFit as IntegrationStrategy) ?? "partial";
     const validStrategies = INTEGRATION_STRATEGIES.map(s => s.value);
     const overallStrategy = validStrategies.includes(strategyValue) ? strategyValue : "partial";
@@ -270,7 +290,52 @@ export default function CRMDetailPage() {
 
   function removeContact(cpId: string) {
     if (!t) return;
+    const cp = t.contacts.find(c => c.id === cpId);
+    // If linked to a platform user, unlink first
+    if (cp?.linkedUserId) {
+      const users = getAllUsers();
+      saveAllUsers(users); // no-op removal; user account stays, just unlinked from contact
+    }
     const updated = { ...t, contacts: t.contacts.filter(c => c.id !== cpId) };
+    setT(updated);
+    saveTarget(updated);
+  }
+
+  function inviteContact(cp: ContactPerson) {
+    if (!t) return;
+    // Ensure a party exists for the target company
+    const parties = getParties();
+    const partyId = `party-${t.id}`;
+    if (!parties.find(p => p.id === partyId)) {
+      saveParties([...parties, { id: partyId, name: t.name, type: "seller" }]);
+    }
+    // Create a platform user from the contact
+    const newUser: AppUser = {
+      id: crypto.randomUUID(),
+      name: cp.name,
+      email: cp.email,
+      partyId,
+      partyType: "seller",
+      role: "seller:mgmt-lead",
+    };
+    const users = getAllUsers();
+    saveAllUsers([...users, newUser]);
+    setPlatformUsers([...users, newUser]);
+    // Link the contact to the new user
+    const updated = {
+      ...t,
+      contacts: t.contacts.map(c => c.id === cp.id ? { ...c, linkedUserId: newUser.id } : c),
+    };
+    setT(updated);
+    saveTarget(updated);
+  }
+
+  function unlinkContact(cp: ContactPerson) {
+    if (!t) return;
+    const updated = {
+      ...t,
+      contacts: t.contacts.map(c => c.id === cp.id ? { ...c, linkedUserId: undefined } : c),
+    };
     setT(updated);
     saveTarget(updated);
   }
@@ -419,11 +484,25 @@ export default function CRMDetailPage() {
                   → {nextMeta.label}
                 </button>
               )}
-              {t.stage === "closed" && (
-                <button onClick={handleConvertToIntegration}
-                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg sf-gradient text-white hover:opacity-90 transition-opacity">
-                  → Start Integration
-                </button>
+              {stageIndex(t.stage) >= stageIndex("nda") && (
+                <Link href={`/dataroom/${t.id}`}
+                  className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-[#E5E7EB] text-[#6B7280] hover:border-[#FF6400]/40 hover:text-[#FF6400] transition-colors">
+                  <FolderOpen size={13} /> Dataroom
+                </Link>
+              )}
+              {(t.stage === "due-diligence" || t.stage === "closed") && (
+                linkedDeal ? (
+                  <Link
+                    href={linkedDeal.planStatus === "planning" ? `/deals/${linkedDeal.id}/plan` : `/deals/${linkedDeal.id}`}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg border border-[#9AC183] text-[#9AC183] hover:bg-[#F0F7EC] transition-colors">
+                    → View Integration
+                  </Link>
+                ) : (
+                  <button onClick={handleStartIntegration}
+                    className="flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-lg sf-gradient text-white hover:opacity-90 transition-opacity">
+                    {t.stage === "closed" ? "→ Start Integration" : "→ Start Integration Planning"}
+                  </button>
+                )
               )}
               <button onClick={handleDelete} className="p-2 text-[#D1D5DB] hover:text-red-400 transition-colors rounded-lg hover:bg-red-50">
                 <Trash2 size={14} />
@@ -791,21 +870,46 @@ export default function CRMDetailPage() {
           {/* ── Contacts ── */}
           {tab === "contacts" && (
             <div className="max-w-2xl space-y-4">
-              {t.contacts.map(cp => (
-                <div key={cp.id} className="bg-white border border-[#E5E7EB] rounded-xl px-4 py-3 flex items-center gap-4">
-                  <div className="w-9 h-9 rounded-full bg-[#F3F4F6] flex items-center justify-center shrink-0">
-                    <span className="text-xs font-bold text-[#9CA3AF]">{cp.name.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase()}</span>
+              {t.contacts.map(cp => {
+                const linkedUser = cp.linkedUserId ? platformUsers.find(u => u.id === cp.linkedUserId) : null;
+                return (
+                  <div key={cp.id} className="bg-white border border-[#E5E7EB] rounded-xl px-4 py-3 flex items-center gap-4">
+                    <div className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 ${linkedUser ? "bg-[#FFEFE5]" : "bg-[#F3F4F6]"}`}>
+                      <span className={`text-xs font-bold ${linkedUser ? "text-[#FF6400]" : "text-[#9CA3AF]"}`}>{cp.name.split(" ").map(w => w[0]).join("").slice(0,2).toUpperCase()}</span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-medium text-[#242C2D]">{cp.name}</p>
+                        {linkedUser && (
+                          <span className="flex items-center gap-1 text-[9px] font-mono px-1.5 py-0.5 rounded-full bg-[#FFEFE5] text-[#FF6400]">
+                            <LinkIcon size={8} /> platform user
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-[#9CA3AF]">{cp.role}</p>
+                      {cp.email && <p className="text-[11px] font-mono text-[#6B7280]">{cp.email}</p>}
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {linkedUser ? (
+                        <button onClick={() => unlinkContact(cp)}
+                          title="Unlink platform account"
+                          className="text-[10px] font-mono text-[#9CA3AF] hover:text-[#EF4444] transition-colors px-2 py-1 rounded-lg hover:bg-red-50">
+                          Unlink
+                        </button>
+                      ) : (
+                        <button onClick={() => inviteContact(cp)}
+                          title="Create platform account for this contact"
+                          className="flex items-center gap-1 text-[10px] font-mono text-[#9CA3AF] hover:text-[#FF6400] transition-colors px-2 py-1 rounded-lg hover:bg-[#FFEFE5]">
+                          <UserPlus size={11} /> Invite
+                        </button>
+                      )}
+                      <button onClick={() => removeContact(cp.id)} className="text-[#D1D5DB] hover:text-red-400 transition-colors p-1 rounded-lg">
+                        <X size={14} />
+                      </button>
+                    </div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-[#242C2D]">{cp.name}</p>
-                    <p className="text-[11px] text-[#9CA3AF]">{cp.role}</p>
-                    {cp.email && <p className="text-[11px] font-mono text-[#6B7280]">{cp.email}</p>}
-                  </div>
-                  <button onClick={() => removeContact(cp.id)} className="text-[#D1D5DB] hover:text-red-400 transition-colors">
-                    <X size={14} />
-                  </button>
-                </div>
-              ))}
+                );
+              })}
 
               {showAddContact ? (
                 <div className="bg-white border border-[#E5E7EB] rounded-xl p-4 space-y-3">
